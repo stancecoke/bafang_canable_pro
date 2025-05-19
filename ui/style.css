@@ -1,0 +1,245 @@
+body { font-family: Arial, sans-serif; padding: 15px; max-width: 850px; margin: 0 auto; font-size: 14px; background-color: #f4f4f4; }
+.container { display: flex; flex-direction: column; gap: 15px; }
+.card { border: 1px solid #ccc; padding: 15px; border-radius: 8px; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.card h2, .card h3 { margin-top: 10px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #eee; color: #333; }
+.status { display: flex; align-items: center; gap: 10px; }
+.status-indicator { width: 14px; height: 14px; border-radius: 50%; background-color: #dc3545; flex-shrink: 0; border: 1px solid rgba(0,0,0,0.1); }
+.status-indicator.connected { background-color: #28a745; }
+.status-indicator.found { background-color: #fd7e14; } 
+.controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-bottom: 10px;}
+button, input[type="text"], input[type="number"] { padding: 8px 12px; font-size: 13px; border-radius: 4px; border: 1px solid #ccc; box-sizing: border-box; }
+button { cursor: pointer; background: #007bff; color: white; border: none; transition: background-color 0.2s ease; }
+button:hover:not(:disabled) { background: #0056b3; }
+button:disabled { background: #6c757d; cursor: not-allowed; opacity: 0.65; }
+input[type="text"], input[type="number"] { width: 100%; }
+textarea { width: calc(100% - 16px); min-height: 80px; font-family: monospace; margin-top: 8px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; font-size: 12px; }
+.log { background: #212529; color: #e9ecef; padding: 10px 15px; font-family: 'SF Mono', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace; font-size: 12px; height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-word; border-radius: 4px; border: 1px solid #495057; }
+.log-entry { border-bottom: 1px solid #495057; padding: 3px 0; margin-bottom: 3px; line-height: 1.4; }
+.log-entry:last-child { border-bottom: none; }
+.log-time { color: #adb5bd; margin-right: 8px; }
+.log-prefix { margin-right: 5px; font-weight: bold;}
+.log-prefix.status { color: #17a2b8; } .log-prefix.info { color: #6c757d; } .log-prefix.error { color: #dc3545; font-weight: bold;} .log-prefix.req { color: #ffc107; } .log-prefix.tx { color: #20c997; } .log-prefix.rx { color: #fd7e14; } .log-prefix.ack { color: #28a745; font-weight: bold;} .log-prefix.nack { color: #dc3545; font-weight: bold;} .log-prefix.save_req { color: #fd7e14; } .log-prefix.tx_error { color: #dc3545; font-weight: bold;}
+.log-data { color: #e9ecef; }
+.log-data pre { margin: 0; padding: 5px; background-color: #343a40; border-radius: 3px; overflow-x: auto; font-size: 11px;}
+.tab-buttons { display: flex; border-bottom: 1px solid #ccc; margin-bottom: 15px; }
+.tab-button { padding: 10px 15px; cursor: pointer; border: 1px solid transparent; border-bottom: none; margin-bottom: -1px; background-color: #e9ecef; color: #495057; border-radius: 4px 4px 0 0; font-size: 14px; font-weight: 500; margin-right: 5px; }
+.tab-button:hover { background-color: #dee2e6; }
+.tab-button.active { background-color: #fff; border-color: #ccc #ccc #fff; color: #007bff; }
+.tab-content { display: none; padding-top: 10px; }
+.tab-content.active { display: block; }
+.description-table { width: 100%; border-collapse: collapse; margin-bottom: 15px; table-layout: fixed; }
+.description-table th, .description-table td { border: 1px solid #dee2e6; padding: 8px 10px; text-align: left; vertical-align: top; word-wrap: break-word; }
+.description-table th { background-color: #f8f9fa; font-weight: bold; width: 35%; }
+.description-table td { width: 65%; }
+.description-table td span { font-weight: 500; margin-right: 5px;}
+.description-table td input { margin-top: 3px; }
+.description-table td button { margin-top: 5px; margin-right: 5px; padding: 5px 10px; font-size: 12px;}
+.description-table small { color: #6c757d; font-style: italic; display: block; margin-top: 4px; }
+.error-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+.error-table th, .error-table td { border: 1px solid #dee2e6; padding: 6px 8px; text-align: left; font-size: 12px;}
+.error-table th { background-color: #f8f9fa; font-weight: bold; }
+.error-table td.code { font-weight: bold; }
+.general-controls { margin-top: 15px; display: flex; gap: 10px; justify-content: flex-end;}
+.assist-table td,
+.assist-table th {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    vertical-align: middle;
+}
+.assist-table thead tr th:nth-child(1),
+.assist-table tbody tr td:nth-child(1) {
+     width: 15%;
+     text-align: center;
+}
+.assist-table thead tr th:nth-child(2),
+.assist-table tbody tr td:nth-child(2) {
+     width: 40%;
+}
+.assist-table tbody tr td:nth-child(2) input[type="number"] {
+     width: 80px;
+     min-width: 60px;
+     padding: 4px 8px;
+     box-sizing: border-box;
+}
+.assist-table thead tr th:nth-child(3),
+.assist-table tbody tr td:nth-child(3) {
+     width: 45%;
+}
+.assist-table tbody tr td:nth-child(3) input[type="number"] {
+     width: 90px;
+     min-width: 70px;
+     padding: 4px 8px;
+     box-sizing: border-box;
+}
+.assist-table tbody tr td:nth-child(2),
+.assist-table tbody tr td:nth-child(3) {
+     white-space: nowrap;
+}
+.assist-table tbody tr td span.unit-label {
+     display: inline-block;
+     margin-left: 4px;
+     vertical-align: middle;
+}
+.torque-table td,
+.torque-table th {
+    padding-top: 4px;
+    padding-bottom: 4px;
+    vertical-align: middle;
+    font-size: 12px;
+}
+.torque-table input[type="number"] {
+     width: 65px;
+     padding: 4px 6px;
+     font-size: 12px;
+     box-sizing: border-box;
+     display: inline-block;
+     max-width: 90%;
+}
+.torque-table th {
+     font-size: 11px;
+     white-space: normal;
+}
+
+.chart-placeholder {
+    width: 90%;
+    max-width: 600px;
+    height: 300px; /* Same height as your chart container */
+    margin: 20px auto;
+    padding: 20px;
+    border: 1px dashed #555;
+    border-radius: 5px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+    color: #696666;
+    background-color: #e3e3e3; /* Or your desired placeholder background */
+}
+
+.chart-container {
+    width: 90%;
+    max-width: 600px;
+    height: 300px;
+    margin: 20px auto;
+    padding: 10px;
+    border: 1px solid #444;
+    border-radius: 5px;
+    background-color: #303030;
+}
+
+.raw-param-controls {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 15px;
+    align-items: center;
+}
+
+.raw-param-controls select {
+    flex-grow: 1;
+    padding: 8px 12px;
+    font-size: 13px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+}
+
+hex-editor-container {
+    overflow-x: auto; /* Allow horizontal scrolling if table is too wide */
+    /* --- NEW: Add top and bottom margin for more viewport space --- */
+    margin-top: 50px;    /* Adds 50px space above the table */
+    margin-bottom: 50px; /* Adds 50px space below the table */
+    /* Alternatively, you could use padding if you want the background of the container to extend:
+    padding-top: 50px;
+    padding-bottom: 50px;
+    */
+}
+
+#hexEditorTable {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed; /* Important for consistent column widths */
+    font-family: 'SF Mono', Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
+    font-size: 13px;
+}
+
+#hexEditorTable th,
+#hexEditorTable td {
+    border: 1px solid #ddd;
+    padding: 0; /* Remove padding for input to fill cell */
+    text-align: center;
+    height: 30px; /* Fixed height for cells */
+    position: relative; /* For tooltip positioning */
+}
+
+#hexEditorTable input[type="text"] {
+    width: 100%;
+    height: 100%;
+    border: none;
+    text-align: center;
+    font-family: inherit;
+    font-size: inherit;
+    box-sizing: border-box;
+    padding: 5px;
+    text-transform: uppercase; /* Show hex in uppercase */
+}
+#hexEditorTable input[type="text"]:focus {
+    outline: 1px solid #007bff;
+    background-color: #eef;
+}
+
+/* Tooltip Styling */
+#hexEditorTable td .tooltiptext {
+    visibility: hidden; /* Initially hidden */
+    opacity: 0;       /* Initially transparent for transition */
+    min-width: 120px;
+    max-width: 300px;
+    background-color: #333;
+    color: #fff;
+    text-align: left;
+    border-radius: 6px;
+    padding: 8px 10px;
+    position: absolute;
+    z-index: 10;
+    bottom: 125%;
+    left: 0; /* JS will set this */
+    /* transform: translateX(0); NO LONGER NEEDED, JS sets left directly */
+    transition: opacity 0.15s ease-out, visibility 0s linear 0.15s; /* Delay visibility until opacity starts */
+    font-size: 11px;
+    line-height: 1.4;
+    pointer-events: none;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+    white-space: pre-wrap;
+}
+
+#hexEditorTable td:hover .tooltiptext {
+    visibility: visible;
+    opacity: 1;
+    transition-delay: 0s, 0s; /* Show immediately on hover */
+}
+
+/* Arrow for tooltip */
+#hexEditorTable td .tooltiptext::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%; /* This will be relative to the tooltip's own width */
+    transform: translateX(-50%); /* Center the arrow under the tooltip */
+    margin-left: 0; /* Not needed with transform */
+    border-width: 5px;
+    border-style: solid;
+    border-color: #333 transparent transparent transparent;
+}
+
+/* Highlighting for multi-byte values */
+.hex-byte-highlight-start {
+    border-left: 2px solid blue !important;
+}
+.hex-byte-highlight-end {
+     border-right: 2px solid blue !important;
+}
+.hex-byte-highlight-middle {
+
+    /* Optional: if you want a different style for bytes in the middle of a multi-byte value */
+}
+.hex-byte-single {
+    /* Optional: style for single byte values if needed */
+}

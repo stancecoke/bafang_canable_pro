@@ -1,0 +1,11 @@
+{
+  "name": "openbafang-cannable",
+  "version": "1.0.0",
+  "description": "CAN bus interface for Bafang motor controllers",
+  "main": "server.js",
+  "dependencies": {
+    "candlelightjs": "github:ieb/candleLightJS",
+    "usb": "^2.11.0",
+    "ws": "^8.18.1"
+  }
+}

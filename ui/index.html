@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bafang CANable Pro</title>
+	<link rel="stylesheet" href="style.css">
+  </head>
+<body>
+    <div class="container">
+        <h1>Bafang CANable Pro</h1>
+
+        <!-- Status Card -->
+		<div class="card">
+            <!-- Use a flex container for horizontal alignment -->
+            <div class="status-container" style="display: flex; align-items: center; justify-content: space-between; gap: 15px;">
+                <!-- Left part: Indicator and Text -->
+                <div class="status" style="display: flex; align-items: center; gap: 10px; flex-grow: 1;">
+                    <div id="statusIndicator" class="status-indicator"></div>
+                    <span id="statusText">Disconnected</span> <!-- Default text -->
+                </div>
+                <!-- Right part: Button -->
+                <div class="status-controls">
+                     <button id="connectCanButton" disabled style="padding: 6px 12px; font-size: 13px;">Connect</button>
+                </div>
+            </div>
+			<div id="canDeviceName" style="font-size: 0.9em; color: #6c757d; margin-top: 5px; text-align: center;">
+                <!-- Device name will be shown here -->
+            </div>
+        </div>
+
+        <!-- Tab Buttons -->
+        <div class="tab-buttons">
+            <button class="tab-button active " data-tab="controller">Controller</button>
+            <button class="tab-button" data-tab="display">Display</button>
+            <button class="tab-button" data-tab="sensor">Sensor</button>
+            <button class="tab-button" data-tab="battery">Battery</button>
+            <button class="tab-button" data-tab="gears">Assist</button>
+            <button class="tab-button" data-tab="info">Info</button>
+            <button class="tab-button" data-tab="debug">Debug</button>
+        </div>
+
+        <!-- Tab Content Area -->
+        <div class="card">
+            <!-- Controller Tab -->
+            <div class="tab-content active" id="tab-controller">
+                 <h2>Controller Settings</h2>
+                 <div class="general-controls">
+                    <button id="controllerSyncButton">Sync Controller Data</button>
+                    <button id="controllerSaveButton">Save Controller Changes</button>
+                 </div>
+
+                 <!-- Real-Time Data -->
+                 <h3>Real-Time Data</h3>
+                 <table class="description-table">
+                     <tbody>
+                         <tr><th>Remaining Capacity</th><td><span id="ctrlRt0RemainCapValue">N/A</span> %</td></tr>
+                         <tr><th>Remaining Distance</th><td><span id="ctrlRt0RemainDistValue">N/A</span> Km</td></tr>
+                         <tr><th>Last Trip Distance</th><td><span id="ctrlRt0SingleTripValue">N/A</span> Km</td></tr>
+                         <tr><th>Cadence</th><td><span id="ctrlRt0CadenceValue">N/A</span> RPM</td></tr>
+                         <tr><th>Torque Value</th><td><span id="ctrlRt0TorqueValue">N/A</span> mV</td></tr>
+                         <tr><th>Voltage</th><td><span id="ctrlRt1VoltageValue">N/A</span> V</td></tr>
+                         <tr><th>Controller Temperature</th><td><span id="ctrlRt1TempValue">N/A</span> C°</td></tr>
+                         <tr><th>Motor Temperature</th><td><span id="ctrlRt1MotorTempValue">N/A</span> C°</td></tr>
+                         <tr><th>Current</th><td><span id="ctrlRt1CurrentValue">N/A</span> A</td></tr>
+                         <tr><th>Speed</th><td><span id="ctrlRt1SpeedValue">N/A</span> Km/H</td></tr>
+                     </tbody>
+                 </table>
+                 <div id="ctrlRtPlaceholder" class="placeholder-text">Real-time data not yet received.</div>
+
+                 <!-- Electric Parameters -->
+                 <h3>Electric Parameters</h3>
+                 <table class="description-table">
+                     <tbody>
+                        <tr>
+                             <th>System Voltage</th>
+                             <td>
+                                 <select id="ctrlP1SysVoltageSelect">
+                                     <option value="">-- Select --</option>
+                                     <option value="36">36 V</option>
+                                     <option value="43">43 V</option>
+                                     <option value="48">48 V</option>
+                                 </select>
+                                 <span id="ctrlP1SysVoltageRawValue" style="font-size:0.9em; color:#6c757d; margin-left:10px;">(Raw: N/A)</span>
+                                 <small>Changing this can be risky. Ensure compatibility.</small>
+                             </td>
+                         </tr>
+                         <tr>
+                             <th>Current Limit</th>
+                             <td>
+                                 <span id="ctrlP1CurrentLimitValue">N/A</span> A<br>
+                                 <input type="number" id="ctrlP1CurrentLimitInput" min="1" max="30" step="1" placeholder="Enter new value (1-30 A)">
+                                 <small>Be careful! Too high can damage motor/controller.</small>
+                             </td>
+                         </tr>
+                         <tr>						 
+                            <th>Max Current on Low Charge</th>
+                            <td>
+                                <span id="ctrlP1MaxCurrentLowChargeValue">N/A</span> A<br>
+                                <input type="number" id="ctrlP1MaxCurrentLowChargeInput" min="0" max="30" step="1" placeholder="Enter new value (0-30 A)"> <!-- Max likely <= Current Limit -->
+                                <small>Limits current when battery is very low to protect it.</small>
+                            </td>
+                         </tr>
+                         <tr>
+                             <th>Overvoltage Cutoff</th>
+                             <td>
+                                 <span id="ctrlP1OverVoltageValue">N/A</span> V<br>
+                                 <input type="number" id="ctrlP1OverVoltageInput" min="0" max="255" step="1" placeholder="Enter new value (V)">
+                                 <small>Controller error when voltage exceeds this.</small>
+                              </td>
+                         </tr>
+                         <tr>
+                             <th>Undervoltage Cutoff (Under Load)</th>
+                             <td>
+                                 <span id="ctrlP1UnderVoltageLoadValue">N/A</span> V<br>
+                                 <input type="number" id="ctrlP1UnderVoltageLoadInput" min="0" max="255" step="1" placeholder="Enter new value (V)">
+                                  <small>Motor stops during riding if voltage drops below this.</small>
+                             </td>
+                         </tr>
+                          <tr>
+                             <th>Undervoltage Cutoff (Idle)</th>
+                             <td>
+                                 <span id="ctrlP1UnderVoltageIdleValue">N/A</span> V<br>
+                                 <input type="number" id="ctrlP1UnderVoltageIdleInput" min="0" max="255" step="1" placeholder="Enter new value (V)">
+                                  <small>Motor won't start if voltage is below this.</small>
+                             </td>
+                         </tr>
+                     </tbody>
+                 </table>
+                 <div id="ctrlElectricPlaceholder" class="placeholder-text">Electric parameters not yet received.</div>
+
+                 <!-- Battery Parameters (Controller View) -->
+                 <h3>Battery Parameters (Controller Settings)</h3>
+                  <table class="description-table">
+                     <tbody>
+                         <tr>
+                             <th>Expected Battery Capacity</th>
+                             <td>
+                                 <span id="ctrlP1BattCapacityValue">N/A</span> mAh<br>
+                                 <input type="number" id="ctrlP1BattCapacityInput" min="1" max="65000" step="100" placeholder="Enter new value (mAh)">
+                             </td>
+                         </tr>
+                         <tr>
+                            <th>Limp Mode SoC Limit</th>
+                            <td>
+                                <span id="ctrlP1LimpModeSocValue">N/A</span> %<br>
+                                <input type="number" id="ctrlP1LimpModeSocInput" min="0" max="100" step="1" placeholder="Enter new value (0-100 %)">
+                                <small>SoC % below which motor power might be reduced.</small>
+                            </td>
+                         </tr>
+                         <tr>
+                             <th>Expected Range on Full Charge</th>
+                             <td>
+                                 <span id="ctrlP1FullRangeValue">N/A</span> Km<br>
+                                 <input type="number" id="ctrlP1FullRangeInput" min="1" max="255" step="1" placeholder="Enter new value (Km)">
+                             </td>
+                         </tr>
+                         <!-- Max Current on Low Charge etc. from P1 if needed -->
+                     </tbody>
+                 </table>
+                 <div id="ctrlBatteryPlaceholder" class="placeholder-text">Battery parameters not yet received.</div>
+
+                 <!-- Mechanical Parameters -->
+                 <h3>Mechanical Parameters</h3>
+                  <table class="description-table">
+                     <tbody>
+                         <tr><th>Gear Ratio (Deceleration)</th><td><span id="ctrlP1GearRatioValue">N/A</span></td></tr>
+                         <tr><th>Coaster Brake Support</th><td><span id="ctrlP1CoasterBrakeValue">N/A</span></td></tr>
+                         <tr><th>Max Motor Rotor RPM</th><td><span id="ctrlP1MaxRpmValue">N/A</span> RPM</td></tr>
+                         <tr><th>Cadence Sensor Signals/Rotation</th><td><span id="ctrlP1CadenceSignalsValue">N/A</span></td></tr>
+                         <tr><th>Motor Type</th><td><span id="ctrlP1MotorTypeValue">N/A</span></td></tr>
+                         <tr>
+                             <th>Speed Sensor Magnets</th>
+                             <td>
+                                 <span id="ctrlP1SpeedMagnetsValue">N/A</span><br>
+                                 <input type="number" id="ctrlP1SpeedMagnetsInput" min="1" max="5" step="1" placeholder="Enter new value (1-10)">
+                             </td>
+                         </tr>
+                         <tr><th>Temperature Sensor Type</th><td><span id="ctrlP1TempSensorValue">N/A</span></td></tr>
+                         <tr>
+                             <th>Lamps Always On</th>
+                             <td>
+                                 <span id="ctrlP1LampsOnValue">N/A</span><br>
+                                 <select id="ctrlP1LampsOnInput">
+                                     <option value="">-- Select --</option>
+                                     <option value="true">Yes</option>
+                                     <option value="false">No</option>
+                                 </select>
+                             </td>
+                         </tr>
+                         <!-- Displayless Mode if needed -->
+                     </tbody>
+                 </table>
+                 <div id="ctrlMechPlaceholder" class="placeholder-text">Mechanical parameters not yet received.</div>
+
+                 <!-- Driving Parameters -->
+                 <h3>Driving Parameters</h3>
+                  <table class="description-table">
+                     <tbody>
+                         <tr>
+                             <th>Start Current</th>
+                             <td>
+                                 <span id="ctrlP1StartCurrentValue">N/A</span> %<br>
+                                 <input type="number" id="ctrlP1StartCurrentInput" min="1" max="100" step="1" placeholder="Enter new value (%)">
+                             </td>
+                         </tr>
+                         <tr>
+                             <th>Current Loading Time (Ramp Up)</th>
+                             <td>
+                                 <span id="ctrlP1CurrentLoadTimeValue">N/A</span> S<br>
+                                 <input type="number" id="ctrlP1CurrentLoadTimeInput" min="0.1" max="20" step="0.1" placeholder="Enter new value (S)">
+                             </td>
+                         </tr>
+                         <tr>
+                             <th>Current Shedding Time (Ramp Down)</th>
+                             <td>
+                                 <span id="ctrlP1CurrentShedTimeValue">N/A</span> S<br>
+                                 <input type="number" id="ctrlP1CurrentShedTimeInput" min="0.1" max="20" step="0.1" placeholder="Enter new value (S)">
+                             </td>
+                         </tr>
+                         <tr>
+                             <th>Motor Trigger Type</th>
+                             <td>
+                                 <span id="ctrlP1PedalTypeValue">N/A</span><br>
+                                 <select id="ctrlP1PedalTypeInput">
+                                     <option value="">-- Select --</option>
+                                     <option value="0">Torque Sensor + Throttle</option>
+                                     <option value="1">Cadence Sensor + Throttle</option>
+                                     <option value="2">Throttle Lever Only</option>
+									 <option value="3">Torque Sensor Only</option>
+                                 </select>
+                             </td>
+                         </tr>
+                     </tbody>
+                 </table>
+                 <div id="ctrlDrivingPlaceholder" class="placeholder-text">Driving parameters not yet received.</div>
+
+                 <!-- Throttle Parameters -->
+                 <h3>Throttle Parameters</h3>
+                  <table class="description-table">
+                     <tbody>
+                         <tr>
+                             <th>Throttle Start Voltage</th>
+                             <td>
+                                 <span id="ctrlP1ThrottleStartValue">N/A</span> V<br>
+                                 <input type="number" id="ctrlP1ThrottleStartInput" min="1.0" max="4.2" step="0.1" placeholder="Enter new value (V)">
+                                 <small>Voltage where motor starts responding.</small>
+                             </td>
+                         </tr>
+                         <tr>
+                             <th>Throttle Max Voltage</th>
+                             <td>
+                                 <span id="ctrlP1ThrottleEndValue">N/A</span> V<br>
+                                 <input type="number" id="ctrlP1ThrottleEndInput" min="1.0" max="4.2" step="0.1" placeholder="Enter new value (V)">
+                                  <small>Voltage for maximum throttle power.</small>
+                             </td>
+                         </tr>
+                     </tbody>
+                 </table>
+                 <div id="ctrlThrottlePlaceholder" class="placeholder-text">Throttle parameters not yet received.</div>
+
+                 <!-- Speed Settings -->
+                 <h3>Speed Settings</h3>
+                  <table class="description-table">
+                     <tbody>
+                          <tr>
+                             <th>Speed Limit</th>
+                             <td>
+                                 <span id="ctrlP3SpeedLimitValue">N/A</span> Km/H<br>
+                                 <input type="number" id="ctrlP3SpeedLimitInput" min="1" max="99" step="0.1" placeholder="Enter new value (Km/H)">
+                                 <small>Check local laws before changing!</small>
+                             </td>
+                         </tr>
+                          <tr>
+                             <th>Wheel Diameter Setting</th>
+                             <td>
+                                 <span id="ctrlP3WheelDiameterValue">N/A</span><br>
+                                 <select id="ctrlP3WheelDiameterInput">
+                                     <option value="">-- Select --</option>
+                                     <!-- Options populated by JS -->
+                                 </select>
+                                 <small>Setting wrong size is illegal.</small>
+                             </td>
+                         </tr>
+                          <tr>
+                             <th>Wheel Circumference</th>
+                             <td>
+                                 <span id="ctrlP3CircumferenceValue">N/A</span> mm<br>
+                                 <input type="number" id="ctrlP3CircumferenceInput" min="400" max="3000" step="1" placeholder="Enter new value (mm)">
+                                 <small>Auto-calculated if possible, or set manually.</small>
+                             </td>
+                         </tr>
+                         <tr>
+                             <th>Walk Assist Speed</th>
+                             <td>
+                                 <span id="ctrlP1WalkAssistSpeedValue">N/A</span> Km/H<br>
+                                 <input type="number" id="ctrlP1WalkAssistSpeedInput" min="0" max="6" step="0.5" placeholder="Enter new value (Km/H)">
+                                  <small>Typically 3-6 Km/H. Max ~6 Km/H.</small>
+                            </td>
+                         </tr>
+                     </tbody>
+                 </table>
+                 <div id="ctrlSpeedPlaceholder" class="placeholder-text">Speed settings not yet received.</div>
+
+                 <!-- Calibration -->
+                 <h3>Calibration</h3>
+                  <table class="description-table">
+                     <tbody>
+                         <tr>
+                            <th>Position Sensor</th>
+                            <td><button id="ctrlCalibratePositionButton">Calibrate Position Sensor</button>
+                                <small>WARNING: Motor will spin! Remove chain first!</small>
+                            </td>
+                         </tr>
+                         <!-- Add Torque Calibration if command known -->
+                     </tbody>
+                 </table>
+            </div>
+
+            <!-- Display Tab -->
+            <div class="tab-content" id="tab-display">
+                <h2>Display Settings</h2>
+
+                <!-- General Controls for Display Tab -->
+                <div class="general-controls">
+                     <button id="displaySyncButton">Sync All Display Data</button>
+                     <button id="displaySaveButton">Save Display Changes</button>
+                </div>
+             <!-- Real-Time Data Section -->
+                <h3>Real-Time Data</h3>
+                 <table class="description-table">
+                    <tbody>
+                        <tr><th>Assist Levels Number</th><td><span id="displayAssistLevelsValue">N/A</span></td></tr>
+                        <tr><th>Mode</th><td><span id="displayModeValue">N/A</span></td></tr>
+                        <tr><th>Boost</th><td><span id="displayBoostValue">N/A</span></td></tr>
+                        <tr><th>Current Assist Level</th><td><span id="displayCurrentAssistValue">N/A</span></td></tr>
+                        <tr><th>Light Status</th><td><span id="displayLightValue">N/A</span></td></tr>
+                        <tr><th>Button Status</th><td><span id="displayButtonValue">N/A</span></td></tr>
+                    </tbody>
+                </table>
+                <!-- Records Section -->
+                <h3>Records</h3>
+                <table class="description-table">
+                    <tbody>
+                        <tr>
+                            <th>Total Mileage</th>
+                            <td>
+                                <span id="displayTotalMileageValue">N/A</span> Km<br>
+                                <input type="number" id="displayTotalMileageInput" min="0" step="1" placeholder="Enter new value">
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Single Trip Mileage</th>
+                             <td>
+                                <span id="displaySingleMileageValue">N/A</span> Km<br>
+                                <input type="number" id="displaySingleMileageInput" min="0" step="0.1" placeholder="Enter new value">
+                            </td>
+                        </tr>
+                        <tr>
+                            <th>Max Registered Speed</th>
+                            <td><span id="displayMaxSpeedValue">N/A</span> Km/H</td>
+                        </tr>
+                        <tr>
+                            <th>Average Speed</th>
+                            <td><span id="displayAverageSpeedValue">N/A</span> Km/H</td>
+                        </tr>
+                        <tr>
+                            <th>Mileage Since Last Service</th>
+                            <td>
+                                <span id="displayServiceMileageValue">N/A</span> Km<br>
+                                <button id="displayClearServiceButton">Clear Service Record</button>
+                            </td>
+                        </tr>
+                         <tr>
+                            <th>Set Current Time</th>
+                            <td>
+                                <button id="displaySetTimeButton">Set Display Clock to Now</button>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+                   <h3>Time settings</h3>
+                 <table class="description-table">
+                 <tbody>
+                      <tr>
+                          <th>Bike Auto shutdown</th>
+                          <td>
+                              <span id="displayShutdownTimeValue">N/A</span>minutes<br>
+                          </td>
+                      </tr>
+                 </tbody>
+                </table>
+                <h3>Error Codes</h3>
+                <table class="error-table">
+                    <thead>
+                        <tr><th>Code</th><th>Description</th><th>Recommendations</th></tr>
+                    </thead>
+                    <tbody id="displayErrorTableBody">
+                        <tr><td colspan="3">No errors reported or data not yet received.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+
+           <!-- Sensor -->
+            <div class="tab-content" id="tab-sensor">
+                <h2>Sensor</h2>
+                <div class="general-controls">
+                    <button id="sensorSyncButton">Sync Sensor Data</button>
+                </div>
+
+                <h3>Real-Time Data</h3>
+                <table class="description-table">
+                    <tbody>
+                        <tr><th>Torque Value</th><td><span id="sensorTorqueValue">N/A</span> mV</td></tr>
+                        <tr><th>Cadence</th><td><span id="sensorCadenceValue">N/A</span> RPM</td></tr>
+                    </tbody>
+                 </table>
+                 <div id="sensorRealtimePlaceholder" class="placeholder-text" style="display: block;">Real-time data not yet received.</div>
+            </div>
+
+            <!-- Battery Tab  -->
+            <div class="tab-content" id="tab-battery">
+                <h2>Battery</h2>
+                 <div class="general-controls">
+                    <button id="batterySyncButton">Sync Battery Data</button>
+                </div>
+
+                <h3>Cell Voltage</h3>
+                <table class="cell-voltage-table">
+                    <tbody id="batteryCellVoltageTableBody">
+                        <!-- Cell voltages will be populated here by JS -->
+                    </tbody>
+                </table>
+                 <div id="batteryCellsPlaceholder" class="placeholder-text" style="display: block;">Cell voltage data not yet received.</div>
+
+
+                <h3>Capacity Info</h3>
+                <table class="description-table">
+                    <tbody>
+                        <tr><th>Full Capacity</th><td><span id="batteryFullCapacityValue">N/A</span> mAh</td></tr>
+                        <tr><th>Capacity Left</th><td><span id="batteryCapacityLeftValue">N/A</span> mAh</td></tr>
+                        <tr><th>RSOC (Relative SOC)</th><td><span id="batteryRsocValue">N/A</span> %</td></tr>
+                        <tr><th>ASOC (Absolute SOC)</th><td><span id="batteryAsocValue">N/A</span> %</td></tr>
+                        <tr><th>SOH (State of Health)</th><td><span id="batterySohValue">N/A</span> %</td></tr>
+                    </tbody>
+                </table>
+                 <div id="batteryCapacityPlaceholder" class="placeholder-text" style="display: block;">Capacity data not yet received.</div>
+
+                <h3>Current State</h3>
+                 <table class="description-table">
+                    <tbody>
+                        <tr><th>Voltage</th><td><span id="batteryVoltageValue">N/A</span> V</td></tr>
+                        <tr><th>Current</th><td><span id="batteryCurrentValue">N/A</span> A</td></tr>
+                        <tr><th>Temperature</th><td><span id="batteryTempValue">N/A</span> C°</td></tr>
+                    </tbody>
+                </table>
+                 <div id="batteryStatePlaceholder" class="placeholder-text" style="display: block;">Current state data not yet received.</div>
+            </div>
+
+            <!-- Gears Tab  -->
+            <div class="tab-content" id="tab-gears">
+                 <h2>Assist</h2>
+                 <div class="general-controls">
+                    <button id="gearsSyncButton">Sync Data</button>
+                    <button id="gearsSaveButton">Save Changes</button>
+                 </div>
+
+				<h3>Startup Angle</h3>
+                 <table class="description-table">
+                     <tbody>
+                         <tr>
+                             <th>Startup Angle</th>
+                             <td>
+                                 <span id="controllerStartupAngleValue">N/A</span> degrees<br>
+                                 <input type="number" id="controllerStartupAngleInput" min="0" max="360" step="1" placeholder="Enter new value (0-360°)">
+                                 <small>Angle pedals must turn before motor assists.</small>
+                             </td>
+                         </tr>
+                     </tbody>
+                 </table>
+                 <div id="startupAnglePlaceholder" class="placeholder-text">Startup Angle data not yet received.</div>
+				 
+                 <!-- Assist Levels Section -->
+                 <h3>Assist Levels (Parameter Block 0 and 1)</h3>
+                 <div class="table-container assist-table-container"> <!-- Added container for scrolling -->
+                     <table class="description-table assist-table">
+                         <thead>
+                             <tr>
+                                 <th>Assist Level</th>
+                                 <th>Current Limit (%)</th>
+                                 <th>Speed Limit (%)</th>
+								 <th>Assist Ratio (%)</th> 
+								 <th>Acceleration</th>
+                             </tr>
+                         </thead>
+                         <tbody id="assistLevelTableBody">
+                             <!-- Rows populated by JS -->
+                         </tbody>
+                     </table>
+                 </div>
+                 <div id="assistLevelPlaceholder" class="placeholder-text">Assist level data (Controller P0 and P1) not yet received.</div>
+
+                 <!-- Torque Profiles Section -->
+                 <h3>Torque Sensor-Controlled Assist (Parameter Block 2)</h3>
+                  <div class="table-container torque-table-container"> <!-- Added container for scrolling -->
+                     <table class="description-table torque-table">
+                          <thead>
+                              <tr>
+                                  <th>Level</th>
+                                  <th>Start Torque (Val)</th>
+                                  <th>Max Torque (Val)</th>
+                                  <th>Return Torque (Val)</th>
+                                  <th>Min Current (%)</th>
+                                  <th>Max Current (%)</th>
+                                  <th>Start Pulse (Signals)</th>
+                                  <th>Current Decay (ms)</th>
+                                  <th>Stop Delay (ms)</th>
+                              </tr>
+                          </thead>
+                          <tbody id="torqueProfileTableBody">
+                              <!-- Rows populated by JS -->
+                          </tbody>
+                     </table>
+                 </div>
+                 <div id="torqueProfilePlaceholder" class="placeholder-text">Torque profile data (Controller P2) not yet received.</div>
+							 
+			<div class="settings-section">
+				<h2>Assist Curves</h2>
+				<div id="pasCurvesPlaceholder" class="chart-placeholder">Assist Curves data not yet available. Please Sync.</div>
+				<div id="pasCurvesContainer" class="chart-container" style="display: none;">
+					<canvas id="pasCurvesChart"></canvas>
+				</div>
+			</div>
+
+			<div class="settings-section">
+				<h2>Start Ramp Curves</h2>
+				<div id="startRampPlaceholder" class="chart-placeholder">Start Ramp data not yet available. Please Sync.</div>
+				<div id="startRampContainer" class="chart-container" style="display: none;">
+					<canvas id="startRampChart"></canvas>
+				</div>
+			</div>
+            </div>
+
+			
+		  <div class="tab-content" id="tab-info">
+                 <h2>Device Information</h2>
+                 <div class="general-controls">
+                    <button id="infoSyncButton">Sync All Info Data</button>
+                    <button id="infoSaveButton">Save Info Changes</button> <!-- Added Save Button -->
+          </div>
+
+                 <!-- Controller Info -->
+                 <h3>Info: Controller</h3>
+                 <table class="description-table">
+                     <tbody>
+                        <tr><th>Hardware Version</th><td><span id="infoCtrlHwVersionValue">N/A</span></td></tr>
+                        <tr><th>Software Version</th><td><span id="infoCtrlSwVersionValue">N/A</span></td></tr>
+                        <tr><th>Model Number</th><td><span id="infoCtrlModelNumberValue">N/A</span></td></tr>
+                        <tr><th>Serial Number</th><td><span id="infoCtrlSnValue">N/A</span><small>Note: Often changeable.</small></td></tr>
+                        <!-- Make Manufacturer Editable -->
+                        <tr>
+                           <th>Manufacturer</th>
+                           <td>
+                               <span id="infoCtrlMfgValue">N/A</span><br>
+                               <input type="text" id="infoCtrlMfgInput" maxlength="30" placeholder="Enter new value">
+                           </td>
+                       </tr>
+                     </tbody>
+                 </table>
+                 <div id="infoCtrlPlaceholder" class="placeholder-text">Controller info not yet received.</div>
+
+                 <!-- Display Info -->
+                 <h3>Info: Display</h3>
+                  <table class="description-table">
+                     <tbody>
+                        <tr><th>Hardware Version</th><td><span id="infoDisplayHwVersionValue">N/A</span></td></tr>
+                        <tr><th>Software Version</th><td><span id="infoDisplaySwVersionValue">N/A</span></td></tr>
+                        <tr><th>Model Number</th><td><span id="infoDisplayModelNumberValue">N/A</span></td></tr>
+                        <tr><th>Bootloader Version</th><td><span id="infoDisplayBootloaderVersionValue">N/A</span></td></tr>
+                        <tr><th>Serial Number</th><td><span id="infoDisplaySnValue">N/A</span><small>Note: Often changeable.</small></td></tr>
+                        <!-- Make Manufacturer Editable -->
+                        <tr>
+                            <th>Manufacturer</th>
+                            <td>
+                                <span id="infoDisplayMfgValue">N/A</span><br>
+                                <input type="text" id="infoDisplayMfgInput" maxlength="30" placeholder="Enter new value">
+                            </td>
+                        </tr>
+                         <!-- Make Customer Number Editable -->
+                         <tr>
+                            <th>Customer Number</th>
+                            <td>
+                                <span id="infoDisplayCnValue">N/A</span><br>
+                                <input type="text" id="infoDisplayCnInput" maxlength="30" placeholder="Enter new value">
+                            </td>
+                        </tr>
+                     </tbody>
+                 </table>
+                 <div id="infoDisplayPlaceholder" class="placeholder-text">Display info not yet received.</div>
+
+                 <!-- Sensor Info (Read Only) -->
+                 <h3>Info: Sensor</h3>
+                  <table class="description-table">
+                     <tbody>
+                        <tr><th>Hardware Version</th><td><span id="infoSensorHwVersionValue">N/A</span></td></tr>
+                        <tr><th>Software Version</th><td><span id="infoSensorSwVersionValue">N/A</span></td></tr>
+                        <tr><th>Model Number</th><td><span id="infoSensorModelNumberValue">N/A</span></td></tr>
+                        <tr><th>Serial Number</th><td><span id="infoSensorSnValue">N/A</span><small>Note: Often changeable.</small></td></tr>
+                     </tbody>
+                 </table>
+                 <div id="infoSensorPlaceholder" class="placeholder-text">Sensor info not yet received.</div>
+
+                 <!-- Battery Info (Read Only) -->
+                 <h3>Info: Battery</h3>
+                  <table class="description-table">
+                     <tbody>
+                        <tr><th>Hardware Version</th><td><span id="infoBatteryHwVersionValue">N/A</span></td></tr>
+                        <tr><th>Software Version</th><td><span id="infoBatterySwVersionValue">N/A</span></td></tr>
+                        <tr><th>Model Number</th><td><span id="infoBatteryModelNumberValue">N/A</span></td></tr>
+                        <tr><th>Serial Number</th><td><span id="infoBatterySnValue">N/A</span><small>Note: Often changeable.</small></td></tr>
+                     </tbody>
+                 </table>
+                 <div id="infoBatteryPlaceholder" class="placeholder-text">Battery info not yet received.</div>
+
+            </div>
+
+             <!-- Debug Tab -->
+            <div class="tab-content" id="tab-debug">
+                 <h2>Debug / Custom Frame</h2>
+                 <div class="custom-frame-controls">
+                     <input type="text" id="canIdInput" placeholder="CAN ID (Hex, e.g., 05F06002)">
+                     <input type="text" id="canDataInput" placeholder="Data (Hex, e.g., 0100FF)">
+                     <button id="sendCustomFrame">Send Custom</button>
+                 </div>
+                 <!-- NEW: Raw Parameter Editor Card -->
+                 <div class="card" id="rawParamEditorCard">
+                     <h2>Raw Frame Editor</h2>
+                     <div class="raw-param-controls">
+                         <select id="rawParamSelect">
+                             <option value="">-- Select Parameter Block --</option>
+                             <option value="controller_params_0">Controller Params 0 (Acceleration)</option>
+                             <option value="controller_params_1">Controller Params 1 (General)</option>
+                             <option value="controller_params_2">Controller Params 2 (Torque)</option>
+                             <option value="controller_speed_params">Controller Speed Params</option>
+							 <option value="controller_params_6017">Controller Block 6017</option>
+                             <option value="controller_params_6018">Controller Block 6018</option>
+                         </select>
+                         <button id="rawParamSyncButton">Sync Selected</button>
+                         <button id="rawParamSaveButton">Save Selected</button>
+                     </div>
+                     <div class="hex-editor-container">
+                         <table id="hexEditorTable">
+                             <tbody id="hexEditorTableBody">
+                                 <!-- Rows and cells will be generated by JS -->
+                             </tbody>
+                         </table>
+                     </div>
+                     <div id="hexEditorPlaceholder" class="placeholder-text" style="display: block;">Select a parameter block to view/edit.</div>
+                 </div>
+				 
+                 <!-- Moved Communication Log Here -->
+                 <div class="card"> <!-- Optional: Kept the card style for the log within the debug tab -->
+                    <h2>Communication Log
+                        <button id="clearLogButton" style="float: right; background-color: #6c757d;">Clear Log</button>
+                    </h2>
+                    <div id="log" class="log"></div>
+                 </div>
+            </div>
+        </div> <!-- End of main tab content card -->
+
+    </div> <!-- End of container -->
+<script src="chart.umd.js"></script>
+<script src="main.js"></script>
+</body>
+</html>
