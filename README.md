@@ -1,4 +1,4 @@
-Bafang Besst software replacement for M500, M510, M560 etc
+Bafang Besst software replacement for M500, M510, M560 etc  
 buy a suitable [Canable](https://www.ebay.com/itm/156316405598)  
 install [NodeJS](https://nodejs.org/en/download/)  
 download and unzip [this repo](https://github.com/bart594/bafang_canable_pro/archive/refs/heads/master.zip)  
