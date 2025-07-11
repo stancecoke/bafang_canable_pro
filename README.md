@@ -6,6 +6,6 @@ Open the unziped folder in the windows file manager
 Double click on "Install_NPM.bat", this step is only needed once  
 Connect the Canable to the PC and to your Bafang System [Tutorial how to wire the Canable](https://kaspars.net/blog/bafang-canbus)  
 Double click on "Start_Tool.bat"  
-Have Fun!
-
+Have Fun!  
+![GUI](screenshot.jpg)
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
