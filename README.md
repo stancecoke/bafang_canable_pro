@@ -1,5 +1,5 @@
 Bafang Besst software replacement for M500, M510, M560 etc  
-buy a suitable [Canable](https://www.ebay.com/itm/156316405598), needs STM32F072 processor with [candlelight firmware](https://github.com/candle-usb/candleLight_fw)  
+buy a suitable [Canable](https://www.ebay.com/itm/156316405598) (needs STM32F072 processor with [candlelight firmware](https://github.com/candle-usb/candleLight_fw))  
 install [NodeJS](https://nodejs.org/en/download/)  
 download and unzip [this repo](https://github.com/stancecoke/bafang_canable_pro/archive/refs/heads/master.zip)  
 Open the unziped folder in the windows file manager  
