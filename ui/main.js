@@ -1142,7 +1142,7 @@
 			for (let i = 0; i < 6; i++) { // Bafang P2 has 6 torque profiles (0-5)
 				const profileData = p2.torque_profiles[i];
 				const row = torqueBody.insertRow();
-				row.insertCell(0).textContent = i; // Display profile 0-5
+				row.insertCell(0).textContent = i*3 +' to ' + (i*3+3) + ' mph'; // Display profile 0-5
 
 				const createInputCell = (paramName, value, min, max, step = 1, unit = '', isReadOnly = false, title = '') => {
 					const cell = row.insertCell();
@@ -1184,6 +1184,7 @@
 				createInputCell('start_pulse', startPulseValue, START_PULSE_MIN, START_PULSE_MAX, 1, '', startPulseReadOnly, startPulseTitle);
 
 				createInputCell('current_decay_time', profileData?.current_decay_time, 5, 1275, 5, '');
+                createInputCell('torque_decay_time', profileData?.torque_decay_time, 5, 1275, 5, '');
 				createInputCell('stop_delay', profileData?.stop_delay, 2, 510, 2, '');
 			}
 			updatePasCurvesChart();
