@@ -5,7 +5,7 @@ download and unzip [this repo](https://github.com/stancecoke/bafang_canable_pro/
 Open the unziped folder in the windows file manager  
 Double click on "Install_NPM.bat", this step is only needed once  
 Connect the Canable to the PC and to your Bafang System [Tutorial how to wire the Canable](https://kaspars.net/blog/bafang-canbus)  
-You can mod this kind of [display extension cable](https://aliexpress.com/item/1005005307730396.html) to loop in the Canable  
+You can mod this kind of [display extension cable](https://aliexpress.com/item/1005005307730396.html) to loop in the Canable. Be careful, make sure, that you choose the male - female option!  
 ![UCAN_Wiring](UCAN_wiring.JPG)  
 Double click on "Start_Tool.bat"  
 Have Fun!  
