@@ -9,5 +9,5 @@ You can mod this kind of [display extension cable](https://aliexpress.com/item/1
 ![UCAN_Wiring](UCAN_wiring.JPG)  
 Double click on "Start_Tool.bat"  
 Have Fun!  
-![GUI](Screenshot.jpg)
+![GUI](Screenshot.jpg)  
 This program is free software: you can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
