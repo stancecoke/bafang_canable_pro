@@ -267,7 +267,7 @@ class BafangCanControllerParser {
                      break; // Stop processing profiles if data is too short
                  }
              }
-			 acceleration_level: packet.data[54];
+			 pkg.acceleration_level = packet.data[54];
         } else {
              console.warn("Insufficient data length for torque profiles in Parameter2");
         }
