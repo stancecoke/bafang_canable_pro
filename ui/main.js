@@ -2327,8 +2327,8 @@
             //Send read requests for all display parameters
             socket.send('READ:3:96:7'); // Errors
             //socket.send('READ:3:99:0'); // Realtime
-            // socket.send('READ:3:99:1'); // Data1
-            //socket.send('READ:3:99:2'); // Data2
+            socket.send('READ:3:99:1'); // Data1
+            socket.send('READ:3:99:2'); // Data2
 			//socket.send('READ:3:99:3'); // Auto Shutdown Time
 
         };

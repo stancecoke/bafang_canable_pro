@@ -382,6 +382,7 @@ function prepareParameter2WriteData(canbusInstance, value) {
      try {
          for (let i = 0; i <= 5; i++) {
              const profile = value.torque_profiles[i];
+           
              if (!profile) {
                   console.warn(`[Serializer] Torque profile index ${i} missing in P2 data.`);
                   continue; // Skip if a profile is missing
