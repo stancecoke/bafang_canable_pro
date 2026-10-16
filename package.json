@@ -1,6 +1,6 @@
 {
   "name": "openbafang-cannable",
-  "version": "1.0.0",
+  "version": "2.3.0",
   "description": "CAN bus interface for Bafang motor controllers",
   "main": "server.js",
   "bin": "server.js",
@@ -16,21 +16,19 @@
     "globals": "^16.3.0"
   },
    "pkg": {
-    "scripts": "**/*.js",
-    "assets": [ 
+    "assets": [
       "ui/**/*",
-      "node_modules/usb/*",
-      "node_modules/usb/**/*"
+      "!ui/main.js"
     ],
     "targets": [ "node18-win-x64", "node18-win-arm64", "node18-linux-x64", "node18-linux-arm64", "node18-macos-x64" ],
     "outputPath": "dist"
   },
     "scripts": {
-      "build": "pkg . --no-bytecode --public-packages \"*\" --public --compress Brotli", 
+      "build": "node tools/build.js",
       "dev": "node server.js",
       "sniff": "node can-listener.js"
   },
   "comments":{
-    "build": "Builds the application using yao-pkg"
+    "build": "Builds the application using yao-pkg into dist/<name>-<version>-<platform>-<arch>"
   }
 }
