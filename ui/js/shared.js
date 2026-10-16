@@ -33,7 +33,7 @@ export const state = {
     controllerParams1: null,
     controllerParams2: null,
     controllerSpeedParams: null,
-    controllerOtherInfo: { hwVersion: null, swVersion: null, modelNumber: null, serialNumber: null, productionDate: null, manufacturer: null },
+    controllerOtherInfo: { hwVersion: null, swVersion: null, modelNumber: null, bootloaderVersion: null, serialNumber: null, productionDate: null, manufacturer: null, customerNumber: null, odoKm: null, recordOdoKm: null },
     lastControllerP0: null,
     lastControllerP1: null,
     lastControllerP2: null,
@@ -42,6 +42,9 @@ export const state = {
     lastStartupAngle: null,
     rawParamData: {},
     allEventsStore: {},
+    // The last event of each type really received from the bike (never from a backup).
+    // Restoring a backup keeps it, so Save still compares against what the bike holds.
+    liveEventsStore: {},
     // Connection
     isCanConnected: false,
     isCanDeviceFound: false,
@@ -295,9 +298,16 @@ export const infoElements = {
     ctrlModelNumberValue: document.getElementById('infoCtrlModelNumberValue'),
     ctrlSnValue: document.getElementById('infoCtrlSnValue'),
     ctrlProductionDateValue: document.getElementById('infoCtrlProductionDateValue'),
+    ctrlBootloaderVersionValue: document.getElementById('infoCtrlBootloaderVersionValue'),
+    ctrlCnValue: document.getElementById('infoCtrlCnValue'),
     ctrlMfgValue: document.getElementById('infoCtrlMfgValue'),
     ctrlMfgInput: document.getElementById('infoCtrlMfgInput'),
+    ctrlOdoValue: document.getElementById('infoCtrlOdoValue'),
+    ctrlRecordOdoValue: document.getElementById('infoCtrlRecordOdoValue'),
     ctrlPlaceholder: document.getElementById('infoCtrlPlaceholder'),
+    rideStatsReadButton: document.getElementById('infoRideStatsReadButton'),
+    rideStatsBody: document.getElementById('infoRideStatsBody'),
+    rideStatsNote: document.getElementById('infoRideStatsNote'),
     // Display Info
     displayHwVersionValue: document.getElementById('infoDisplayHwVersionValue'),
     displaySwVersionValue: document.getElementById('infoDisplaySwVersionValue'),
@@ -326,6 +336,18 @@ export const infoElements = {
     batteryPlaceholder: document.getElementById('infoBatteryPlaceholder'),
 };
 
+// Events that describe the bike's state at the moment they were read rather than its
+// settings: live values, current faults and acknowledgements. They are left out of
+// backups, and skipped when restoring older backups that still contain them.
+export const TRANSIENT_EVENT_TYPES = new Set([
+    'normal_ack', 'error_ack',
+    'display_realtime', 'display_errors',
+    'controller_realtime_0', 'controller_realtime_1', 'controller_state', 'controller_errors',
+    'controller_odo', 'controller_record_odo',
+    'sensor_realtime',
+    'battery_state', 'battery_capacity', 'battery_cells_raw', 'battery_charging_info',
+]);
+
 export const fwUpdateElements = {
     fileInput: document.getElementById('fwUpdateFileInput'),
     startButton: document.getElementById('fwUpdateStartButton'),
@@ -333,7 +355,9 @@ export const fwUpdateElements = {
     logArea: document.getElementById('fwUpdatelog'),
     clearButton: document.getElementById('clearFwUpdateLogButton'),
     modeSelect: document.getElementById('fwUpdateModeSelect'),
-    delayInput: document.getElementById('fwUpdateDelayUsInput'),
+    windowInput: document.getElementById('fwUpdateWindowInput'),
+    rxLogCheckbox: document.getElementById('fwUpdateRxLogCheckbox'),
+    holdCheckbox: document.getElementById('fwUpdateHoldCheckbox'),
 };
 
 export const snifferElements = {
@@ -663,9 +687,18 @@ export function delay(ms) {
 export function getProductionDateFromSerial(serialNumber) {
     if (!serialNumber) return 'Unknown';
     serialNumber = serialNumber.replace(/\s/g, '');
-    let dateCode = serialNumber.substring(serialNumber.length - 8, serialNumber.length - 4);
-    let y = dateCode[0].charCodeAt(0) - 65 + 2000;
-    let m = isNaN(dateCode[1]) ? dateCode[1].charCodeAt(0) - 65 + 10 : parseInt(dateCode[1]);
+    // The four characters before the last four: year letter, month (1-9, then A-C for
+    // 10-12) and two-digit day. Anything else is not a date code we can read.
+    const dateCode = serialNumber.substring(serialNumber.length - 8, serialNumber.length - 4);
+    if (!/^[A-Z][1-9A-C]\d\d$/.test(dateCode)) return 'Unknown';
+    // The year letter ran A=2000 ... Z=2025, and Bafang started again at A for 2026, so a
+    // letter stands for 2000+n, 2026+n, ... Take the latest of those not in the future:
+    // a 2026 motor no longer shows as 2000, older serials keep their year, and it keeps
+    // working as the cycle goes round without a fixed cut-off year to maintain.
+    const thisYear = new Date().getFullYear();
+    let y = 2000 + dateCode.charCodeAt(0) - 65;
+    while (y + 26 <= thisYear) y += 26;
+    const m = isNaN(dateCode[1]) ? dateCode.charCodeAt(1) - 65 + 10 : parseInt(dateCode[1], 10);
     return `${y}-${String(m).padStart(2, '0')}-${dateCode.substring(2, 4)}`;
 }
 
@@ -968,5 +1001,36 @@ export function populateWheelSelect() {
             circInput.min = "400";
             circInput.max = "3000";
         }
+    });
+}
+
+// Places a hover bubble (styled position: fixed) next to the element it explains.
+// Positioning against the window rather than the element is what keeps it whole:
+// the parameter tables and the hex editor sit in scrolling/rounded containers that
+// clip anything sticking out of them. The bubble is centred on the anchor, kept
+// inside the window, and opens below instead of above when there is no room on top.
+// Its arrow follows the anchor via --hint-arrow-x; .below flips the arrow.
+export function placeTooltip(anchor, bubble, gap = 8) {
+    const box = anchor.getBoundingClientRect();
+    const width = bubble.offsetWidth, height = bubble.offsetHeight;
+    const centre = box.left + box.width / 2;
+    const left = Math.min(Math.max(8, centre - width / 2), window.innerWidth - width - 8);
+    const below = box.top - height - gap < 8;
+    bubble.style.left = `${left}px`;
+    bubble.style.top = `${below ? box.bottom + gap : box.top - height - gap}px`;
+    bubble.style.setProperty('--hint-arrow-x', `${centre - left}px`);
+    bubble.classList.toggle('below', below);
+}
+
+// Hover help: a "?" next to a field label (.hint-tip) holding its explanation
+// (.hint-tip-text), shown on hover or keyboard focus.
+export function initHintTips(root = document) {
+    root.querySelectorAll('.hint-tip').forEach((tip) => {
+        const show = () => {
+            const bubble = tip.querySelector('.hint-tip-text');
+            if (bubble) placeTooltip(tip, bubble);
+        };
+        tip.addEventListener('mouseenter', show);
+        tip.addEventListener('focus', show);
     });
 }

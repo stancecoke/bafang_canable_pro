@@ -4,8 +4,26 @@ import {
     debugElements, tabButtons, connectCanButton, log, clearLogButton,
     switchTab, addLog, updateCanInterfaceDisplay,
     sendCustomFrame, encodeToHex,
-    rawParamFieldMappings,
+    rawParamFieldMappings, placeTooltip,
 } from './shared.js';
+
+// The field map of a block - names, highlights, auto checksum - but only when the block
+// that arrived is as long as the map describes. Newer controllers answer 6017/6018 with
+// 256 bytes in a different layout, and the 64-byte map would mislabel it.
+function mappingFor(type) {
+    const mapping = rawParamFieldMappings[type];
+    const bytes = state.rawParamData[type];
+    return mapping && Array.isArray(bytes) && bytes.length === mapping.byteLength ? mapping : null;
+}
+
+// The 256-byte 6017/6018 blocks of newer controllers look like ride statistics (odometer,
+// time and distance per assist level). Their layout is unknown and the official tool warns
+// that clearing them wipes the ride history, so they are shown but never written.
+function isReadOnlyBlock(type) {
+    const bytes = state.rawParamData[type];
+    return (type === 'controller_params_6017' || type === 'controller_params_6018')
+        && Array.isArray(bytes) && bytes.length === 256;
+}
 
 export function populateHexEditor() {
     const tableBody = debugElements.hexEditorTableBody;
@@ -43,10 +61,13 @@ export function populateHexEditor() {
     placeholder.style.display = 'none';
     if (hexEditorContainer) hexEditorContainer.style.display = 'block';
     const bytes = state.rawParamData[state.currentRawParamType];
-    const mappingInfo = rawParamFieldMappings[state.currentRawParamType];
-    const numBytes = mappingInfo ? mappingInfo.byteLength : bytes.length;
-    const numRows = 8;
+    const mappingInfo = mappingFor(state.currentRawParamType);
+    // As many rows as the block that arrived needs: 8 for the usual 64 bytes, 32 for
+    // the 256-byte 6017/6018 blocks of newer controllers.
+    const numBytes = bytes.length;
     const numCols = 8;
+    const numRows = Math.ceil(numBytes / numCols);
+    const readOnly = isReadOnlyBlock(state.currentRawParamType);
 
     for (let i = 0; i < numRows; i++) {
         const row = tableBody.insertRow();
@@ -64,12 +85,13 @@ export function populateHexEditor() {
                     input.value = bytes[byteIndex]?.toString(16).toUpperCase().padStart(2, '0') || '00';
                 }
                 input.dataset.index = byteIndex;
+                input.readOnly = readOnly;
                 input.addEventListener('change', handleHexInputChange);
                 input.addEventListener('input', (e) => {
                     e.target.value = e.target.value.toUpperCase().replace(/[^0-9A-F]/g, '');
                 });
 
-                let tooltipTextContent = `Byte Index: ${byteIndex}`;
+                let tooltipTextContent = `Byte Index: ${byteIndex}` + (readOnly ? '\nRead only (ride statistics)' : '');
                 let fieldClass = 'hex-byte-single';
 
                 if (mappingInfo && mappingInfo.fields) {
@@ -93,26 +115,11 @@ export function populateHexEditor() {
                 cell.appendChild(tooltipSpan);
                 cell.appendChild(input);
 
+                // The editor's container clips vertically as well as horizontally, which
+                // hid the tooltips of the top rows; place them against the window instead.
                 cell.addEventListener('mouseenter', () => {
                     const tooltip = cell.querySelector('.tooltiptext');
-                    if (!tooltip) return;
-                    tooltip.style.position = 'absolute';
-                    tooltip.style.visibility = 'hidden';
-                    tooltip.style.display = 'block';
-                    const cellRect = cell.getBoundingClientRect();
-                    const containerRect = hexEditorContainer.getBoundingClientRect();
-                    const tooltipWidth = tooltip.offsetWidth;
-                    let idealLeft = (cell.offsetWidth / 2) - (tooltipWidth / 2);
-                    const cellLeftInContainer = cellRect.left - containerRect.left + hexEditorContainer.scrollLeft;
-                    let potentialTooltipLeftInContainer = cellLeftInContainer + idealLeft;
-                    if (potentialTooltipLeftInContainer < hexEditorContainer.scrollLeft + 5) {
-                        idealLeft = (hexEditorContainer.scrollLeft + 5) - cellLeftInContainer;
-                    } else if (potentialTooltipLeftInContainer + tooltipWidth > hexEditorContainer.scrollLeft + hexEditorContainer.clientWidth - 5) {
-                        idealLeft = (hexEditorContainer.scrollLeft + hexEditorContainer.clientWidth - tooltipWidth - 5) - cellLeftInContainer;
-                    }
-                    tooltip.style.left = `${idealLeft}px`;
-                    tooltip.style.display = '';
-                    tooltip.style.visibility = '';
+                    if (tooltip) placeTooltip(cell, tooltip, 6);
                 });
             } else {
                 cell.textContent = '--';
@@ -149,7 +156,9 @@ function handleHexInputChange(event) {
         state.rawParamData[state.currentRawParamType][byteIndex] = newValue;
         addLog('DEBUG', `Raw param ${state.currentRawParamType} byte ${byteIndex} changed to 0x${newValue.toString(16).toUpperCase()}`);
 
-        const mapping = rawParamFieldMappings[state.currentRawParamType];
+        // Only for the 64-byte layout: in a 256-byte block byte 63 is plain data, and
+        // rewriting it as a checksum would silently corrupt it.
+        const mapping = mappingFor(state.currentRawParamType);
         if (mapping && mapping.byteLength === 64 && byteIndex !== 63) {
             const checksumByteIndex = 63;
             let sum = 0;
@@ -382,6 +391,11 @@ debugElements.rawParamCustomSyncIntervalStopButton.onclick = () => {
 debugElements.rawParamCustomSaveButton.onclick = () => {
     if (!state.currentRawParamType || !state.rawParamData[state.currentRawParamType]) {
         alert('Please select a parameter block and ensure data is loaded before saving.');
+        return;
+    }
+    if (isReadOnlyBlock(state.currentRawParamType)) {
+        alert('The 256-byte 6017/6018 blocks are read only: they hold the ride statistics, '
+            + 'and writing them could wipe the ride history.');
         return;
     }
 

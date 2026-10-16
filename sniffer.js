@@ -34,7 +34,15 @@ class Sniffer {
     }
 
     async setupLogger(){
+        await this.closeLogger()
         this.logToFile = await setupLogger()
+    }
+
+    async closeLogger(){
+        const current = this.logToFile;
+        this.logToFile = null;
+        if (current && current.close)
+            await current.close();
     }
 
     rawFrameRecived = (rawFrame)=>{
@@ -109,6 +117,8 @@ class Sniffer {
             }
         }
         this.logMessage(`Stoping sniffer...`);
+        // Returned so a caller about to exit can wait for the file to be flushed.
+        return this.closeLogger();
     }
 }
 

@@ -212,6 +212,25 @@ From https://github.com/torvalds/linux/blob/master/drivers/net/can/usb/gs_usb.c#
         this._listeners[name].push(fn);
     }
 
+    /**
+     * Remove one listener, or every listener for an event when fn is omitted.
+     * This object outlives a USB reconnect, so without a way to detach, each
+     * reconnect left another copy of every handler attached.
+     */
+    off(name, fn) {
+        if ( this._listeners[name] === undefined ) return;
+        if ( fn === undefined ) {
+            delete this._listeners[name];
+            return;
+        }
+        this._listeners[name] = this._listeners[name].filter((f) => f !== fn);
+    }
+
+    removeAllListeners(name) {
+        if ( name === undefined ) this._listeners = {};
+        else this.off(name);
+    }
+
     async checkDevice() {
         console.log("Start check device ===================");
         const webusb = new usb.WebUSB({
@@ -1133,7 +1152,7 @@ struct gs_device_filter {
                 throw new Error("Invalid endpoint");
             }
             const that = this;
-            this.endpoint.startPoll(3, 1024);
+            this.endpoint.startPoll(this.pollTransfers || 3, 1024);
             that.pollCanFrames = true;
 
             this.endpoint.on('data', this.onUSBPollData);
@@ -1204,12 +1223,37 @@ struct gs_device_filter {
      */
     onUSBPollData(data) {
         try {
-            const dv = new DataView(data.buffer);
-            this._emitEvent("canpacket",dv);
-            this.frame.fromBuffer(dv);
-            if ( this._acceptMessage(this.frame)) {
-                this._emitEvent("frame", this.frame);
-            };
+            const len = this.frameLength;
+            // The firmware packs several frames into one bulk transfer when it is busy,
+            // so walk the whole buffer instead of reading only the first frame. Honour
+            // the Buffer's own offset too: node-usb hands out views into a larger pooled
+            // ArrayBuffer, and reading from its start would decode the wrong bytes.
+            if ( data.byteLength > len ) {
+                this.multiFrameTransfers = (this.multiFrameTransfers || 0) + 1;
+            }
+            for ( let off = 0; off + len <= data.byteLength; off += len ) {
+                const dv = new DataView(data.buffer, data.byteOffset + off, len);
+                this._emitEvent("canpacket",dv);
+                // A fresh frame per message: this object is handed to listeners, and a
+                // shared instance is overwritten by the next frame before they are done.
+                const frame = new CanFrame(len);
+                frame.fromBuffer(dv);
+                // A transmit confirmation for a frame we sent, not bus traffic. Keep it
+                // off the main path so listeners are not flooded with their own sends.
+                if ( frame.frameType === "echo" ) {
+                    this._emitEvent("echo", frame);
+                    continue;
+                }
+                // A controller/bus error report, not a Bafang message. Passing it on
+                // as a normal frame meant the parser tried to read it as one.
+                if ( frame.frameType === "error" ) {
+                    this._emitEvent("canerror", frame);
+                    continue;
+                }
+                if ( this._acceptMessage(frame)) {
+                    this._emitEvent("frame", frame);
+                }
+            }
         } catch(e) {
             console.log("Failed to process usb data", e);
         }

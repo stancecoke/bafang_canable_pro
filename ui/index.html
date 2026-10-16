@@ -19,7 +19,7 @@
                 <div id="canDeviceName" class="text-center text-olive font-semibold ml-3 text-sm"></div>
             </div>
             <h1 class="text-xl font-bold text-olive tracking-tight">
-                <span style="color: black;">Bafang</span> / <span style="color: blue;">EBiCS</span> CANable Pro
+                <span style="color: black;">Bafang</span> / <span style="color: blue;">EBiCS</span> CANable Pro V2.3
 
             </h1>
             <button id="connectCanButton" disabled class="btn btn-primary">Connect</button>
@@ -923,8 +923,10 @@
                             <tr><th>Hardware Version</th><td><span id="infoCtrlHwVersionValue">N/A</span></td></tr>
                             <tr><th>Software Version</th><td><span id="infoCtrlSwVersionValue">N/A</span></td></tr>
                             <tr><th>Model Number</th><td><span id="infoCtrlModelNumberValue">N/A</span></td></tr>
+                            <tr><th>Bootloader Version</th><td><span id="infoCtrlBootloaderVersionValue">N/A</span></td></tr>
                             <tr><th>Serial Number</th><td><span id="infoCtrlSnValue">N/A</span> <small class="form-hint inline">Often changeable.</small></td></tr>
                             <tr><th>Production Date</th><td><span id="infoCtrlProductionDateValue">N/A</span></td></tr>
+                            <tr><th>Customer Number</th><td><span id="infoCtrlCnValue">N/A</span></td></tr>
                             <tr>
                                 <th>Manufacturer</th>
                                 <td>
@@ -932,10 +934,28 @@
                                     <input type="text" id="infoCtrlMfgInput" maxlength="30" placeholder="New value" class="form-input mt-1 w-64">
                                 </td>
                             </tr>
+                            <tr><th>Controller ODO</th><td><span id="infoCtrlOdoValue">N/A</span> Km <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Broadcast by the controller (ID 82F8320E). Follows the value written with Set ODO. N/A if the controller does not send it.</span></span></td></tr>
+                            <tr><th>Ride Record ODO</th><td><span id="infoCtrlRecordOdoValue">N/A</span> Km <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Broadcast by the controller (ID 82F83213). Total of the per-assist-level ride statistics, the same as bytes 0-1 of the 256-byte 6017 block. Set ODO does not change it. N/A if the controller does not send it.</span></span></td></tr>
                         </tbody>
                     </table>
                 </div>
                 <div id="infoCtrlPlaceholder" class="placeholder-text">Controller info not yet received.</div>
+
+                <div class="flex items-center gap-2 flex-wrap mt-4">
+                    <h3 class="section-subtitle" style="margin:0">Riding Record</h3>
+                    <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Distance and time per assist level, read from the 256-byte 6017 (Total) and 6018 (Day trip) blocks of newer controllers. Speed is not stored; it is distance divided by time, as in BESST. A day-trip reset on the display clears the Day trip columns. Read only.</span></span>
+                    <button id="infoRideStatsReadButton" class="btn btn-secondary btn-sm">Read Riding Record</button>
+                </div>
+                <div class="overflow-x-auto mt-2 mb-1">
+                    <table class="error-tbl ride-stats-tbl">
+                        <thead>
+                            <tr><th rowspan="2">Level</th><th colspan="4">Total (ODO)</th><th colspan="4">Day trip (DST)</th></tr>
+                            <tr><th>km</th><th>h</th><th>km/h</th><th>%</th><th>km</th><th>h</th><th>km/h</th><th>%</th></tr>
+                        </thead>
+                        <tbody id="infoRideStatsBody"></tbody>
+                    </table>
+                </div>
+                <div id="infoRideStatsNote" class="placeholder-text">Riding record not yet read.</div>
 
                 <h3 class="section-subtitle">Display</h3>
                 <div class="overflow-x-auto mb-1">
@@ -1024,8 +1044,8 @@
                             <option value="controller_params_1">Controller Params 1 (General 6011)</option>
                             <option value="controller_params_2">Controller Params 2 (Torque 6012)</option>
                             <option value="controller_speed_params">Controller Speed Params (3203)</option>
-                            <option value="controller_params_6017">Controller Block (6017)</option>
-                            <option value="controller_params_6018">Controller Block (6018)</option>
+                            <option value="controller_params_6017">Controller Block (6017, 64 or 256 bytes)</option>
+                            <option value="controller_params_6018">Controller Block (6018, 64 or 256 bytes)</option>
                         </select>
                         <button id="rawParamSyncButton" class="btn btn-primary whitespace-nowrap">Sync Selected</button>
                         <button id="rawParamSaveButton" class="btn btn-save whitespace-nowrap">Save Selected</button>
@@ -1079,6 +1099,7 @@
                                         <option value="CONTROLER" selected>Motor controller</option>
                                         <option value="CONTROLER_OLD">Old motor controller</option>
                                         <option value="CONTROLER_HUB">M410 V2.0 / Hub CRS10F V4.0</option>
+                                        <option value="M400_2.1">M400 Version 2.1</option>
                                         <option value="HMI">HMI (DPC245, DPC080CB, DPC010CN)</option>
                                         <option value="DPC18">HMI DPC18 1.4</option>
                                         <option value="DPE160">HMI DPE160</option>
@@ -1086,10 +1107,25 @@
                                 </td>
                             </tr>
                             <tr>
-                                <th>Delay (microseconds)</th>
+                                <th>Send window (frames)<span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">How many frames may be waiting for the adapter to confirm them before we pause. The transfer then paces itself to whatever the CAN bus actually carries, so there is no timing to guess.<br><b>4 is the default and suits almost everything.</b> Try 2 if an update keeps failing on the same device, or 8 if the transfer is unusually slow &mdash; both were measured as only marginally different. 1 is much slower (one round trip per frame) and 0 disables the window entirely, falling back to the old fixed 300&nbsp;&micro;s delay.</span></span></th>
                                 <td>
-                                    <input type="number" id="fwUpdateDelayUsInput" min="100" max="5000" step="100" value="300" class="form-input w-32">
-                                    <small class="form-hint">Lower value = faster chunks sent.</small>
+                                    <input type="number" id="fwUpdateWindowInput" min="0" max="32" step="1" value="4" class="form-input w-32">
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="fwUpdateRxLogCheckbox">Log received frames</label><span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Writes one [RX] line per frame received from the device to the log file. The summary lines (timings, stalls, errors, adapter) are always written.</span></span></th>
+                                <td>
+                                    <div class="flex items-center gap-2">
+                                        <input type="checkbox" id="fwUpdateRxLogCheckbox" name="fwUpdateRxLogCheckbox" class="w-4 h-4 accent-olive">
+                                    </div>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th><label for="fwUpdateHoldCheckbox">Wait 30 s after update</label><span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Keeps telling the bus a programming tool is present for 30 s after an HMI update, as the official tool does while it waits for the next device to program. Not needed by the displays, and it keeps the motor controller silent, so a display switched on during that time can show error 30. Leave off unless testing.</span></span></th>
+                                <td>
+                                    <div class="flex items-center gap-2">
+                                        <input type="checkbox" id="fwUpdateHoldCheckbox" name="fwUpdateHoldCheckbox" class="w-4 h-4 accent-olive">
+                                    </div>
                                 </td>
                             </tr>
                             <tr>

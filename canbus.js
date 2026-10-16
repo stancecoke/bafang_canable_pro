@@ -37,6 +37,9 @@ class CanBusService extends EventEmitter {
         this.canDevice = new GSUsb();
         this.isStarted = false;
         this.frameLength = 20;
+        // Rotating gs_usb echo id, see sendFrame(). Kept in the range a host driver
+        // uses, because some firmwares treat it as an index into their TX contexts.
+        this.echoId = 0;
         // New multiFrameBuffers structure: keyed by "source-target-cmd-sub"
         this.multiFrameBuffers = {};
         // Still need timeouts, keyed the same way
@@ -95,7 +98,18 @@ class CanBusService extends EventEmitter {
             this.emit('can_status', true, `CAN device connected (${this.connectedDeviceName}).`);
 
 
+            // canDevice survives a reconnect and its listener list is append-only, so
+            // drop the previous set first. Duplicates parsed every frame twice over and,
+            // worse, double counted the transmit confirmations the send window paces on,
+            // which quietly disabled the pacing after any USB replug.
+            for (const ev of ['frame', 'echo', 'canerror', 'error']) {
+                this.canDevice.removeAllListeners(ev);
+            }
             this.canDevice.on('frame', (frame) => this._handleFrameReceived(frame));
+            // Transmit confirmations, kept off the receive path but available for
+            // anything that wants to see what we actually put on the wire.
+            this.canDevice.on('echo', (frame) => this.emit('raw_frame_sent', frame));
+            this.canDevice.on('canerror', (frame) => this.emit('raw_frame_error', frame));
             this.canDevice.on('error', (err) => this._handleCanError(err));
 
             try {
@@ -230,8 +244,14 @@ class CanBusService extends EventEmitter {
             const bufferKey = `${sourceId}-${targetId}-${cmdCode}-${subCode}`; // Unique key for the original command
  
             if (opCode === CanOperation.MULTIFRAME_START) {
-                const expectedLength = frameData[0];
-                console.log(`>>> MF_START | Key: ${bufferKey} | ExpLen: ${expectedLength}`);
+                // The block length is one byte for the 64-byte blocks, but newer controllers
+                // (BBSxx since ~2025) answer 6017/6018 with 256-byte blocks, whose length
+                // only fits in two bytes, little endian. Reading just the first byte gave 0
+                // there and every such read ended in a length mismatch. Found by DPC18RI.
+                const expectedLength = frameData.length >= 2
+                    ? (frameData[1] << 8) | frameData[0]
+                    : frameData[0];
+                console.log(`>>> MF_START | Key: ${bufferKey} | DLC: ${frameData.length} | ExpLen: ${expectedLength}`);
 
                 if (this.multiFrameBuffers[bufferKey]) {
                     console.warn(`>>> MF buffer for key ${bufferKey} already exists. skipping.`);
@@ -402,6 +422,14 @@ class CanBusService extends EventEmitter {
                     dataType = 'controller_total_assist_levels'; parsedData = { raw_data: frame.data };
                     //console.log(`>>> RX Controller Total levels (Raw): ${formatBufferForLog(frame.data)}`);
             }
+            // Odometers broadcast by newer controllers, 32-bit LE in units of 10 m.
+            // 0x0E follows what "Set ODO" writes; 0x13 is the ride-record total
+            // (= bytes 0-1 of the 256-byte 6017 block), which Set ODO leaves alone.
+            else if ((subCode === 0x0E || subCode === 0x13) && frame.data.length >= 4) {
+                const km = Buffer.from(frame.data).readUInt32LE(0) / 100;
+                dataType = subCode === 0x0E ? 'controller_odo' : 'controller_record_odo';
+                parsedData = { odo_km: km, _rawBytes: [...frame.data] };
+            }
         }
         else if (cmdCode === 0x60) {
             if (subCode === 0x10) { parsedData = BafangCanControllerParser.parameter0(frame);
@@ -433,7 +461,9 @@ class CanBusService extends EventEmitter {
             else if (subCode === 0x01) { parsedData = { software_version: charsToString(frame.data) }; dataType = 'controller_sw_version'; }
             else if (subCode === 0x03) { parsedData = { serial_number: charsToString(frame.data) }; dataType = 'controller_sn'; }
             else if (subCode === 0x02) { parsedData = { model_number: charsToString(frame.data) }; dataType = 'controller_mn'; }
+            else if (subCode === 0x04) { parsedData = { customer_number: charsToString(frame.data) }; dataType = 'controller_cn'; }
             else if (subCode === 0x05) { parsedData = { manufacturer: charsToString(frame.data) }; dataType = 'controller_mfg'; }
+            else if (subCode === 0x08) { parsedData = { bootloader_version: charsToString(frame.data) }; dataType = 'controller_bootloader_version'; }
             else if (subCode === 0x07) { parsedData = { error_codes: BafangCanDisplayParser.errorCodes(frame.data) }; dataType = 'controller_errors'; }
         }
         else if (cmdCode === 0x62) {
@@ -790,7 +820,14 @@ class CanBusService extends EventEmitter {
             frameToSend.can_dlc = dataBytes.length; 
             for (let i = 0; i < dataBytes.length; i++) 
                 frameToSend.data.setUint8(i, dataBytes[i]); 
-            frameToSend.echo_id = 0xFFFFFFFF; frameToSend.channel = 0; frameToSend.flags = 0; frameToSend.reserved = 0; 
+            // gs_usb echoes every transmitted frame back carrying whatever echo_id we
+            // supplied, and 0xFFFFFFFF is the value reserved for "received from the bus".
+            // Sending that made our own transmissions arrive indistinguishable from real
+            // traffic: fully parsed and fanned out to every listener, and the transmit
+            // confirmation was lost. The device echoes either way - gs_usb has no no-echo
+            // mode - but a rotating id makes the echo recognisable and droppable.
+            this.echoId = (this.echoId + 1) % 10;
+            frameToSend.echo_id = this.echoId; frameToSend.channel = 0; frameToSend.flags = 0; frameToSend.reserved = 0; 
             //console.log(`Sending CAN frame: ID=${idHex}, Data=[${dataBytes.map(b => b.toString(16).padStart(2,'0')).join(',')}]`);
             const success = await this.canDevice.writeCANFrame(frameToSend); 
             if (!success) { 

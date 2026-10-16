@@ -479,6 +479,12 @@ const wss = new WebSocket.Server({ server });
 		};
 		try {
 			const bytesArray = JSON.parse(jsonData);
+			// The 256-byte 6017/6018 blocks of newer controllers hold the ride statistics
+			// and are read only; refuse here too, so no client can write them by another path.
+			if (cmdCode === 0x60 && (subCode === 0x17 || subCode === 0x18) && Array.isArray(bytesArray) && bytesArray.length > 64) {
+				ws.send(`ERROR: 6017/6018 blocks larger than 64 bytes are read only (ride statistics).`);
+				return true;
+			}
 			if (Array.isArray(bytesArray) && bytesArray.every(b => typeof b === 'number' && b >= 0 && b <= 255)) {
 				ws.send(`INFO: Writing raw long custom...`);
 				const success = await canbus.writeRawBytesParameter(targetId, targetCommandInfo, bytesArray);
@@ -650,11 +656,21 @@ const wss = new WebSocket.Server({ server });
 		if (messageString.startsWith('FW_UPDATE_START:')) {
 			const messageParts = messageString.split(':');
 			const modePart = messageParts[1];
-			const delayPart = messageParts[2];
-			const base64Content = messageParts[3];
+			const windowPart = messageParts[2];
+			// mode:window:options:base64 from current UIs, mode:window:base64 from older
+			// ones. Base64 never contains ':' and the options are URL encoded, so the
+			// payload is always the last part.
+			const base64Content = messageParts[messageParts.length - 1];
+			const options = new URLSearchParams(messageParts.length >= 5 ? messageParts[3] : '');
 			const buffer = Buffer.from(base64Content, 'base64');
 			const fwUpdater = new FwUpdater(canbus,ws);
-			fwUpdater.delayUs = parseInt(delayPart) || 300;
+			fwUpdater.firmwareName = options.get('name') || '';
+			fwUpdater.logRxFrames = options.get('rxlog') === '1';
+			fwUpdater.holdAfterUpdate = options.get('hold') === '1';
+			// Frames allowed in flight before waiting on a transmit confirmation.
+			// 0 keeps the old fixed-delay pacing; anything else paces off the echoes.
+			const sendWindow = parseInt(windowPart);
+			fwUpdater.maxInFlight = Number.isFinite(sendWindow) ? sendWindow : 4;
 			fwUpdater.startUpdateProcedure(buffer,modePart);
 			return true
 		}
@@ -732,7 +748,7 @@ const wss = new WebSocket.Server({ server });
 			if(loggerEnabled)
 				await sniffer.setupLogger()
 			else
-				sniffer.logToFile = null
+				await sniffer.closeLogger()
 			return true
 		}
 		return false;
@@ -860,6 +876,8 @@ const wss = new WebSocket.Server({ server });
 				'controller_speed_params',
 				'controller_current_assist_level',
 				'controller_calories',
+				'controller_odo',
+				'controller_record_odo',
 				'display_autoshutdown_time',
 				'sensor_realtime',
 				'battery_state',
