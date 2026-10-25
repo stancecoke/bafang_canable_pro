@@ -119,6 +119,8 @@ function buildPanel() {
       @media (max-width: 640px) {
         #webusb-panel { left: 8px; right: 8px; bottom: 8px; max-width: none; flex-wrap: nowrap; }
         #webusb-state { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #webusb-panel:has(.error) { flex-wrap: wrap; }
+        #webusb-state.error { flex-basis: 100%; white-space: normal; }
         #webusb-logs { left: 8px; right: 8px; bottom: 56px; min-width: 0; max-width: none; }
       }`;
     document.head.appendChild(css);
@@ -150,7 +152,11 @@ function buildPanel() {
     };
 }
 
-function showState(text) { if (ui.state) ui.state.textContent = text; }
+function showState(text, isError = false) {
+    if (!ui.state) return;
+    ui.state.textContent = text;
+    ui.state.classList.toggle('error', isError);
+}
 
 function showDevices(count) {
     ui.select.hidden = count > 0;
@@ -161,7 +167,16 @@ async function selectAdapter() {
     try {
         await navigator.usb.requestDevice({ filters: USB_FILTERS });
     } catch (e) {
-        return; // chooser dismissed
+        // Closing the chooser is a NotFoundError too ("No device selected"); anything
+        // else rejects without a chooser ever appearing, and used to fail silently.
+        console.warn('[webusb] requestDevice:', e.name, e.message);
+        if (e.name === 'NotFoundError' && /no device selected/i.test(e.message)) return;
+        let hint = '';
+        if (e.name === 'SecurityError' || e.name === 'NotAllowedError' || e.name === 'NotFoundError')
+            hint = ' - USB access may be blocked: check the site settings (lock icon > USB devices) and open the page'
+                + ' directly in Chrome, not inside another app';
+        showState(`- ${e.name}: ${e.message}${hint}`, true);
+        return;
     }
     worker.postMessage({ type: 'refresh' });
 }
