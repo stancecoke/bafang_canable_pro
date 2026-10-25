@@ -6,6 +6,18 @@ import {
     addLog, waitFor,
 } from './shared.js';
 
+// "1.13 km, 0:03:12, avg 21.2 km/h, max 23.0 km/h"; parts the controller does not send are left out.
+function dayTripText(tripKm, stats) {
+    const parts = [];
+    if (tripKm !== null && tripKm !== undefined) parts.push(`${tripKm.toFixed(2)} km`);
+    if (stats) {
+        const s = stats.time_s;
+        parts.push(`${Math.floor(s / 3600)}:${String(Math.floor(s / 60) % 60).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`);
+        parts.push(`avg ${stats.avg_speed_kmh.toFixed(1)} km/h`, `max ${stats.max_speed_kmh.toFixed(1)} km/h`);
+    }
+    return parts.length ? parts.join(', ') : 'N/A';
+}
+
 export function updateInfoUI() {
     // Controller Info
     infoElements.ctrlHwVersionValue.textContent = getNullableString(state.controllerOtherInfo.hwVersion);
@@ -20,6 +32,7 @@ export function updateInfoUI() {
     const km = (v) => (v === null || v === undefined) ? 'N/A' : v.toFixed(2);
     infoElements.ctrlOdoValue.textContent = km(state.controllerOtherInfo.odoKm);
     infoElements.ctrlRecordOdoValue.textContent = km(state.controllerOtherInfo.recordOdoKm);
+    infoElements.ctrlDayTripValue.textContent = dayTripText(state.controllerOtherInfo.tripKm, state.controllerOtherInfo.tripStats);
     infoElements.ctrlPlaceholder.style.display = (state.controllerOtherInfo.hwVersion || state.controllerOtherInfo.swVersion || state.controllerOtherInfo.modelNumber || state.controllerOtherInfo.bootloaderVersion || state.controllerOtherInfo.serialNumber || state.controllerOtherInfo.manufacturer || state.controllerOtherInfo.customerNumber) ? 'none' : 'block';
 
     // Display Info
@@ -60,7 +73,8 @@ const RIDE_BLOCKS = {
     total: { type: 'controller_params_6017', timeAt: 18, distAt: 156 },
     trip: { type: 'controller_params_6018', timeAt: 0, distAt: 36 },
 };
-// 6017 also keeps the block total and a distance not assigned to any level (offset 192);
+// 6017 also keeps the block total and the distance ridden in assist level 0, i.e. without
+// assist (offset 192, found by DPC18RI);
 // the total is their sum and is what the controller broadcasts as 32 13.
 const RIDE_TOTAL_AT = 0;
 const RIDE_UNASSIGNED_AT = 192;
@@ -101,7 +115,7 @@ export function updateRideStatsUI({ fromBackup } = {}) {
     if (total) {
         const blockKm = u32(total.bytes, RIDE_TOTAL_AT) / 100;
         const unassignedKm = u32(total.bytes, RIDE_UNASSIGNED_AT) / 100;
-        notes.push(`Total in block: ${blockKm.toFixed(2)} km (levels ${total.sum.km.toFixed(2)} km + ${unassignedKm.toFixed(2)} km not assigned to a level).`);
+        notes.push(`Total in block: ${blockKm.toFixed(2)} km (levels ${total.sum.km.toFixed(2)} km + ${unassignedKm.toFixed(2)} km in assist level 0, no assist).`);
     }
     for (const [label, block] of [['6017', RIDE_BLOCKS.total], ['6018', RIDE_BLOCKS.trip]]) {
         const bytes = state.rawParamData[block.type];

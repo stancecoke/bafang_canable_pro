@@ -485,6 +485,12 @@ const wss = new WebSocket.Server({ server });
 				ws.send(`ERROR: 6017/6018 blocks larger than 64 bytes are read only (ride statistics).`);
 				return true;
 			}
+			// 600F is read only: the controller acknowledges writes but keeps the old values,
+			// and the layout is only partly known.
+			if (cmdCode === 0x60 && subCode === 0x0F) {
+				ws.send(`ERROR: Block 600F is read only (the controller acknowledges writes but keeps the old values).`);
+				return true;
+			}
 			if (Array.isArray(bytesArray) && bytesArray.every(b => typeof b === 'number' && b >= 0 && b <= 255)) {
 				ws.send(`INFO: Writing raw long custom...`);
 				const success = await canbus.writeRawBytesParameter(targetId, targetCommandInfo, bytesArray);
@@ -724,15 +730,19 @@ const wss = new WebSocket.Server({ server });
 		return false;
 	}
 	async function handleStopSniffer(messageString) {
-		if (messageString.startsWith('SNIFFER_STOP') && sniffer) {
+		if (messageString.startsWith('SNIFFER_STOP')) {
+			if (!sniffer) return true;
 			sniffer.cleanup()
 			sniffer = null;
 			return true
 		}
 		return false;
 	}
+	// The filter list and the log checkbox can change while the sniffer is stopped; there is
+	// nothing to apply then (SNIFFER_START carries both), but they are not unknown commands.
 	async function handleFilteredIdSniffer(messageString) {
-		if (messageString.startsWith('SNIFFER_FILTEREDIDS_SET') && sniffer) {
+		if (messageString.startsWith('SNIFFER_FILTEREDIDS_SET')) {
+			if (!sniffer) return true;
 			const messageParts = messageString.split(':');
 			const filteredIds = messageParts[1].split(';');
 			if(filteredIds.length)
@@ -742,7 +752,8 @@ const wss = new WebSocket.Server({ server });
 		return false;
 	}
 	async function handleLogEnabledSniffer(messageString) {
-		if (messageString.startsWith('SNIFFER_LOG_ENABLE') && sniffer) {
+		if (messageString.startsWith('SNIFFER_LOG_ENABLE')) {
+			if (!sniffer) return true;
 			const messageParts = messageString.split(':');
 			const loggerEnabled = messageParts[1] === 'true'
 			if(loggerEnabled)
@@ -878,6 +889,7 @@ const wss = new WebSocket.Server({ server });
 				'controller_calories',
 				'controller_odo',
 				'controller_record_odo',
+				'controller_trip_stats',
 				'display_autoshutdown_time',
 				'sensor_realtime',
 				'battery_state',

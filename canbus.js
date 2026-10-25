@@ -46,6 +46,10 @@ class CanBusService extends EventEmitter {
         this.multiFrameTimeouts = {};
         this.requestManager = new RequestManager(this);
         this.MULTIFRAME_TIMEOUT = 3000; // 3 seconds timeout
+        // When we last sent a read, keyed "target-cmd-sub". BESST uses the same source
+        // address (5) as this tool, so a multi-frame answer addressed to 5 may be for it.
+        this.ownReads = {};
+        this.OWN_READ_WINDOW_MS = 2000;
 		this.connectedDeviceName = null;
 		this.cachedParameter0 = null;
         this.cachedParameter1 = null;
@@ -57,7 +61,9 @@ class CanBusService extends EventEmitter {
         return this.connectedDeviceName;
     }
 
-     async init(knownDeviceName = null) { // Accept knownDeviceName
+     // listenOnly opens the adapter in gs_usb listen-only mode: it cannot transmit
+     // anything, not even the CAN-level acknowledgement, so it never disturbs the bus.
+     async init(knownDeviceName = null, { listenOnly = false } = {}) { // Accept knownDeviceName
         if (this.isStarted) {
             console.log('[CanBusService] CAN device already initialized.');
             // If already started, ensure connectedDeviceName is consistent
@@ -73,7 +79,7 @@ class CanBusService extends EventEmitter {
 
         try {
             // GSUsb.start() internally finds the device
-            const startResult = await this.canDevice.start(BAFANG_CAN_BITRATE, 0);
+            const startResult = await this.canDevice.start(BAFANG_CAN_BITRATE, listenOnly ? GSUsb.GS_DEVICE_FLAGS.listenOnly : 0);
 
             if (!startResult || !startResult.ok) {
                 this.connectedDeviceName = null; // Clear name on failure
@@ -94,7 +100,10 @@ class CanBusService extends EventEmitter {
 
             this.frameLength = this.canDevice.frameLength || 20;
             this.isStarted = true;
-            console.log(`[CanBusService] CAN device started successfully at ${BAFANG_CAN_BITRATE} bps. Device: ${this.connectedDeviceName}`);
+            this.listenOnly = listenOnly && (this.canDevice.device_flags & GSUsb.GS_DEVICE_FLAGS.listenOnly) !== 0;
+            if (listenOnly && !this.listenOnly)
+                console.warn('[CanBusService] The adapter does not support listen-only mode; it will acknowledge frames on the bus.');
+            console.log(`[CanBusService] CAN device started successfully at ${BAFANG_CAN_BITRATE} bps${this.listenOnly ? ' (listen-only)' : ''}. Device: ${this.connectedDeviceName}`);
             this.emit('can_status', true, `CAN device connected (${this.connectedDeviceName}).`);
 
 
@@ -259,15 +268,25 @@ class CanBusService extends EventEmitter {
                 }
                 if (this.multiFrameTimeouts[bufferKey]) clearTimeout(this.multiFrameTimeouts[bufferKey]);
 
+                // Only acknowledge a transfer we asked for. BESST shares our source
+                // address, and when it reads a block every frame was acknowledged twice
+                // (by it and by us), so the controller skipped frames and BESST got a
+                // broken block ("no riding records"). Others' transfers are still
+                // assembled, just silently. Found by DPC18RI.
+                const readKey = `${sourceId}-${cmdCode}-${subCode}`;
+                const ours = Date.now() - (this.ownReads[readKey] || 0) < this.OWN_READ_WINDOW_MS;
+                if (ours) delete this.ownReads[readKey];
+
                 this.multiFrameBuffers[bufferKey] = {
                     expectedLength: expectedLength,
                     //buffer:[],
                     arrBuffer: Array(Math.ceil(expectedLength/8)).fill(null),
                     originalFrameInfo: { ...parsedFrame }, // Store context of START
+                    ours,
                     //nextSequence: 0
                 };
                 this.multiFrameTimeouts[bufferKey] = this._createMultiFrameTimeout(bufferKey);
-                await this._sendAck(parsedFrame); // ACK the START
+                if (ours) await this._sendAck(parsedFrame); // ACK the START
                 return;
 
             } else if (opCode === CanOperation.MULTIFRAME || opCode === CanOperation.MULTIFRAME_END) {
@@ -316,7 +335,13 @@ class CanBusService extends EventEmitter {
                 //bufferInfo.nextSequence++;
 
                 // Send ACK referencing the original command context stored in bufferInfo
-                await this._sendAck(this.multiFrameBuffers[activeBufferKey].originalFrameInfo);
+                const buffer = this.multiFrameBuffers[activeBufferKey];
+                if (buffer.ours)
+                    await this._sendAck(buffer.originalFrameInfo);
+                // Frames are handled concurrently: while this one waited for its ACK to
+                // go out, the next one (typically MF_END) may have completed the block and
+                // removed the buffer, which used to end in a TypeError on 'arrBuffer'.
+                if (this.multiFrameBuffers[activeBufferKey] !== buffer) return;
 
                 // --- Author's Suggestion: Check for completion after MULTIFRAME too ---
                 let isComplete = false;
@@ -425,10 +450,24 @@ class CanBusService extends EventEmitter {
             // Odometers broadcast by newer controllers, 32-bit LE in units of 10 m.
             // 0x0E follows what "Set ODO" writes; 0x13 is the ride-record total
             // (= bytes 0-1 of the 256-byte 6017 block), which Set ODO leaves alone.
+            // 0x0E bytes 4-7 are the day-trip distance, same units.
             else if ((subCode === 0x0E || subCode === 0x13) && frame.data.length >= 4) {
-                const km = Buffer.from(frame.data).readUInt32LE(0) / 100;
+                const data = Buffer.from(frame.data);
                 dataType = subCode === 0x0E ? 'controller_odo' : 'controller_record_odo';
-                parsedData = { odo_km: km, _rawBytes: [...frame.data] };
+                parsedData = { odo_km: data.readUInt32LE(0) / 100, _rawBytes: [...frame.data] };
+                if (subCode === 0x0E && data.length >= 8) parsedData.trip_km = data.readUInt32LE(4) / 100;
+            }
+            // Day-trip summary: average and max speed in 0.01 km/h, trip time in
+            // seconds. Cleared together with the trip (display trip flag, 6300 byte 3).
+            else if (subCode === 0x10 && frame.data.length >= 6) {
+                const data = Buffer.from(frame.data);
+                dataType = 'controller_trip_stats';
+                parsedData = {
+                    avg_speed_kmh: data.readUInt16LE(0) / 100,
+                    max_speed_kmh: data.readUInt16LE(2) / 100,
+                    time_s: data.readUInt16LE(4),
+                    _rawBytes: [...frame.data],
+                };
             }
         }
         else if (cmdCode === 0x60) {
@@ -456,6 +495,11 @@ class CanBusService extends EventEmitter {
                 dataType = 'controller_params_6018';
                 parsedData = { _rawBytes: [...frame.data] };
                 console.log(`[CanBusService] Assembled controller_0x6018: ${frame.data.length} bytes`);
+            }
+            else if (subCode === 0x0F) {
+                dataType = 'controller_params_600f';
+                parsedData = { _rawBytes: [...frame.data] };
+                console.log(`[CanBusService] Assembled controller_0x600F: ${frame.data.length} bytes`);
             }
             else if (subCode === 0x00) { parsedData = { hardware_version: charsToString(frame.data) }; dataType = 'controller_hw_version'; }
             else if (subCode === 0x01) { parsedData = { software_version: charsToString(frame.data) }; dataType = 'controller_sw_version'; }
@@ -795,6 +839,7 @@ class CanBusService extends EventEmitter {
     // --- sendFrame (Low-level sender - Unchanged) ---
     async sendFrame(commandString) { /* ... */
         if (!this.isStarted) throw new Error('CAN device not connected/started.'); 
+        if (this.listenOnly) return false; // nothing can be sent in listen-only mode
         try { 
             const parts = commandString.split('#'); 
             if (parts.length !== 2) 
@@ -814,6 +859,11 @@ class CanBusService extends EventEmitter {
                 if (dataBytes.length > 8) 
                     throw new Error('CAN data payload too long.'); 
             } 
+            // Noted before sending: the answer can arrive before the request manager has
+            // registered the request.
+            const id29 = canId & 0x1FFFFFFF;
+            if (((id29 >> 16) & 0x07) === CanOperation.READ_CMD)
+                this.ownReads[`${(id29 >> 19) & 0x1F}-${(id29 >> 8) & 0xFF}-${id29 & 0xFF}`] = Date.now();
             const frameToSend = new CanFrame(this.frameLength); 
             frameToSend.can_id = canId | CAN_EFF_FLAG; 
             /* Ensure Extended ID flag is set */; 

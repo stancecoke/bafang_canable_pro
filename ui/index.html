@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Bafang CANable Pro</title>
+    <!-- Browser (WebUSB) build: runs only when the page is not served by server.js -->
+    <script src="webusb/boot.js"></script>
     <script src="tailwind.js"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -45,8 +47,7 @@
             <button class="tab-button" data-tab="display">Display</button>
             <button class="tab-button" data-tab="sensor">Sensor</button>
             <button class="tab-button" data-tab="battery">Battery</button>
-            <button class="tab-button" data-tab="gears">Assist (Full)</button>
-            <button class="tab-button" data-tab="gearsM820">Assist (Ltd)</button>
+            <button class="tab-button" data-tab="gears">Assist</button>
             <button class="tab-button" data-tab="info">Info</button>
             <button class="tab-button" data-tab="debug">Debug</button>
             <button class="tab-button" data-tab="fwUpdate">Firmware</button>
@@ -62,8 +63,7 @@
              #tab-display      Display
              #tab-sensor       Sensor
              #tab-battery      Battery
-             #tab-gears        Assist (Full)
-             #tab-gearsM820    Assist (Ltd)
+             #tab-gears        Assist
              #tab-info         Info
              #tab-debug        Debug
              #tab-fwUpdate     Firmware
@@ -528,6 +528,7 @@
                             <tr><th>Light Status</th><td><span id="displayLightValue">N/A</span></td></tr>
                             <tr><th>Up Button Status</th><td><span id="displayUpButtonValue">N/A</span></td></tr>
                             <tr><th>Down Button Status</th><td><span id="displayDownButtonValue">N/A</span></td></tr>
+                            <tr><th>Trip Active</th><td><span id="displayTripActiveValue">N/A</span> <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Sent by the display to the controller (6300, byte 3). "No" tells the controller to clear its day trip: on a trip reset, and on some displays (DPC18) for about a second whenever the bike stops.</span></span></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -704,6 +705,7 @@
                         <button id="gearsSaveButton" class="btn btn-save">Save Changes</button>
                     </div>
                 </div>
+                <div id="assistModeInfo" class="placeholder-text mb-2">Controller type not detected yet. Press Sync Data.</div>
 
                 <!-- <h3 class="section-subtitle">Startup Angle</h3> -->
                 <div class="overflow-x-auto mb-1">
@@ -728,12 +730,20 @@
                                     </div>
                                 </td>
                             </tr>
+                            <tr id="globalAccelerationRow" style="display:none">
+                                <th>Global Acceleration</th>
+                                <td>
+                                    <span id="globalAccelerationValue" class="value-display">N/A</span>
+                                    <input type="number" id="globalAccelerationInput" min="1" max="8" step="1" placeholder="New value (1-8)" class="form-input mt-1 w-48">
+                                    <small class="form-hint">One acceleration for all assist levels (controllers without per-level acceleration, e.g. M820).</small>
+                                </td>
+                            </tr>
                         </tbody>
                     </table>
                 </div>
                 <div id="startupAnglePlaceholder" class="placeholder-text">Startup Angle data not yet received.</div>
 
-                <h3 class="section-subtitle">Assist Levels (Parameter Block 0 and 1)</h3>
+                <h3 id="assistLevelsSubtitle" class="section-subtitle">Assist Levels (Parameter Block 0 and 1)</h3>
                 <div class="overflow-x-auto mb-1">
                     <table class="description-table assist-table w-full border-collapse text-sm">
                         <thead>
@@ -750,11 +760,11 @@
                                     <div style="color: black; text-align: left;">Speed Limit (%)<div>
                                     <div style="color: blue; text-align: left;">Speed Limit (%)</div>
                                 </th> 
-                                <th class="bg-gray-50 border border-gray-200 px-3 py-2 text-center font-semibold text-gray-700">
+                                <th class="assist-per-level-only bg-gray-50 border border-gray-200 px-3 py-2 text-center font-semibold text-gray-700">
                                     <div style="color: black; text-align: left;">Assist Ratio (%)<div>
                                     <div style="color: blue; text-align: left;">Torque Override Threshold (mV)</div>
                                 </th> 
-                                <th class="bg-gray-50 border border-gray-200 px-3 py-2 text-center font-semibold text-gray-700">
+                                <th class="assist-per-level-only bg-gray-50 border border-gray-200 px-3 py-2 text-center font-semibold text-gray-700">
                                     <div style="color: black; text-align: left;">Acceleration<div>
                                     <div style="color: blue; text-align: left;">Torque Filter</div>
                                 </th>                                 
@@ -763,7 +773,7 @@
                         <tbody id="assistLevelTableBody"></tbody>
                     </table>
                 </div>
-                <div id="assistLevelPlaceholder" class="placeholder-text">Assist level data (Controller P0 and P1) not yet received.</div>
+                <div id="assistLevelPlaceholder" class="placeholder-text">Assist level data not yet received. Press Sync Data.</div>
 
                 <h3 class="section-subtitle">Torque Sensor-Controlled Assist (Parameter Block 2)</h3>
                 <div class="overflow-x-auto mb-1">
@@ -827,85 +837,6 @@
                 <div id="startRampContainer" style="display:none"><div id="startRampChart"></div></div>
             </div>
 
-            <!-- #tab-gearsM820 ============================================= -->
-            <div class="tab-content" id="tab-gearsM820">
-                <div class="flex items-center justify-between mb-5 flex-wrap gap-2">
-                    <h2 class="section-title text-lg">Assist (Limited)</h2>
-                    <div class="flex gap-2 flex-wrap">
-                        <button id="gearsSyncButtonM820" class="btn btn-primary">Sync Data</button>
-                        <button id="gearsSaveButtonM820" class="btn btn-save">Save Changes</button>
-                    </div>
-                </div>
-
-                <div class="overflow-x-auto mb-1">
-                    <table class="param-table">
-                        <tbody>
-                            <tr>
-                                <th>Startup Angle</th>
-                                <td>
-                                    <span id="controllerStartupAngleValueM820" class="value-display">N/A</span> degrees
-                                    <input type="number" id="controllerStartupAngleInputM820" min="0" max="360" step="1" placeholder="New value (0-360°)" class="form-input mt-1 w-48">
-                                    <small class="form-hint">Angle pedals must turn before motor assists.</small>
-                                </td>
-                            </tr>
-                            <tr>
-                                <th>Global Acceleration</th>
-                                <td>
-                                    <span id="globalAccelerationValueM820" class="value-display">N/A</span>
-                                    <input type="number" id="globalAccelerationInputM820" min="1" max="8" step="1" placeholder="New value (1-8)" class="form-input mt-1 w-48">
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div id="startupAnglePlaceholderM820" class="placeholder-text">Startup Angle data not yet received.</div>
-
-                <h3 class="section-subtitle">Assist Levels (Parameter Block 1)</h3>
-                <div class="overflow-x-auto mb-1">
-                    <table class="description-table assist-table w-full border-collapse text-sm">
-                        <thead>
-                            <tr>
-                                <th class="bg-gray-50 border border-gray-200 px-3 py-2 text-center font-semibold text-gray-700">Assist Level</th>
-                                <th class="bg-gray-50 border border-gray-200 px-3 py-2 font-semibold text-gray-700">Current Limit (%)</th>
-                                <th class="bg-gray-50 border border-gray-200 px-3 py-2 font-semibold text-gray-700">Speed or Cadence Limit (%)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="assistLevelTableBodyM820"></tbody>
-                    </table>
-                </div>
-                <div id="assistLevelPlaceholderM820" class="placeholder-text">Assist level data (Controller P1) not yet received.</div>
-
-                <h3 class="section-subtitle">Torque Sensor-Controlled Assist (Parameter Block 2)</h3>
-                <div class="overflow-x-auto mb-1">
-                    <table class="description-table torque-table w-full border-collapse">
-                        <thead>
-                            <tr>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Speed range</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Start Torque</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Max Torque</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Return Torque</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Max Current (%)</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Min Current (%)</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Start Pulse</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Current Decay (5ms)</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Torque Attenuation (10ms)</th>
-                                <th class="bg-gray-50 border border-gray-200 px-2 py-1.5 text-xs font-semibold text-gray-700">Stop Delay (2ms)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="torqueProfileTableBodyM820"></tbody>
-                    </table>
-                </div>
-                <div id="torqueProfilePlaceholderM820" class="placeholder-text">Torque profile data (Controller P2) not yet received.</div>
-
-                <h3 class="section-subtitle mt-6">Assist Curves</h3>
-                <div id="pasCurvesPlaceholderM820" class="chart-placeholder">Assist Curves data not yet available. Please Sync.</div>
-                <div id="pasCurvesContainerM820"  style="display:none"><div id="pasCurvesChartM820" ></div></div>
-
-                <h3 class="section-subtitle mt-6">Start Ramp Curves</h3>
-                <div id="startRampPlaceholderM820" class="chart-placeholder">Start Ramp data not yet available. Please Sync.</div>
-                <div id="startRampContainerM820"  style="display:none"><div id="startRampChartM820"></div></div>
-            </div>
-
             <!-- #tab-info ================================================== -->
             <div class="tab-content" id="tab-info">
                 <div class="flex items-center justify-between mb-5 flex-wrap gap-2">
@@ -936,6 +867,7 @@
                             </tr>
                             <tr><th>Controller ODO</th><td><span id="infoCtrlOdoValue">N/A</span> Km <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Broadcast by the controller (ID 82F8320E). Follows the value written with Set ODO. N/A if the controller does not send it.</span></span></td></tr>
                             <tr><th>Ride Record ODO</th><td><span id="infoCtrlRecordOdoValue">N/A</span> Km <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Broadcast by the controller (ID 82F83213). Total of the per-assist-level ride statistics, the same as bytes 0-1 of the 256-byte 6017 block. Set ODO does not change it. N/A if the controller does not send it.</span></span></td></tr>
+                            <tr><th>Day Trip</th><td><span id="infoCtrlDayTripValue">N/A</span> <span class="hint-tip" tabindex="0">?<span class="hint-tip-text" role="tooltip">Broadcast by the controller: distance from 82F8320E bytes 4-7, time and average/max speed from 82F83210. Cleared when the display resets its trip (and by the DPC18 whenever the bike stops). N/A if the controller does not send it.</span></span></td></tr>
                         </tbody>
                     </table>
                 </div>
@@ -1046,6 +978,7 @@
                             <option value="controller_speed_params">Controller Speed Params (3203)</option>
                             <option value="controller_params_6017">Controller Block (6017, 64 or 256 bytes)</option>
                             <option value="controller_params_6018">Controller Block (6018, 64 or 256 bytes)</option>
+                            <option value="controller_params_600f">Controller Block (600F, throttle limits, read only)</option>
                         </select>
                         <button id="rawParamSyncButton" class="btn btn-primary whitespace-nowrap">Sync Selected</button>
                         <button id="rawParamSaveButton" class="btn btn-save whitespace-nowrap">Save Selected</button>
@@ -1176,7 +1109,7 @@
                                 <td colspan="3">
                                     <div class="flex items-center gap-2">
                                         <input type="checkbox" id="snifferLogToFileCheckbox" name="snifferLogToFileCheckbox" class="w-4 h-4 accent-olive">
-                                        <span class="text-xs text-gray-500 font-mono">→ C:\snapshot\bafang_canable_pro\logs</span>
+                                        <span class="log-target text-xs text-gray-500 font-mono">→ C:\snapshot\bafang_canable_pro\logs</span>
                                     </div>
                                 </td>
                             </tr>
@@ -1223,7 +1156,7 @@
                                 <td>
                                     <div class="flex items-center gap-2">
                                         <input type="checkbox" id="rideLoggerLogToFileCheckbox" name="rideLoggerLogToFileCheckbox" class="w-4 h-4 accent-olive">
-                                        <span class="text-xs text-gray-500 font-mono">→ C:\snapshot\bafang_canable_pro\logs</span>
+                                        <span class="log-target text-xs text-gray-500 font-mono">→ C:\snapshot\bafang_canable_pro\logs</span>
                                     </div>
                                 </td>
                                 <th>Refresh Rate (ms)</th>

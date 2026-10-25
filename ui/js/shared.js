@@ -33,8 +33,11 @@ export const state = {
     controllerParams1: null,
     controllerParams2: null,
     controllerSpeedParams: null,
-    controllerOtherInfo: { hwVersion: null, swVersion: null, modelNumber: null, bootloaderVersion: null, serialNumber: null, productionDate: null, manufacturer: null, customerNumber: null, odoKm: null, recordOdoKm: null },
+    controllerOtherInfo: { hwVersion: null, swVersion: null, modelNumber: null, bootloaderVersion: null, serialNumber: null, productionDate: null, manufacturer: null, customerNumber: null, odoKm: null, recordOdoKm: null, tripKm: null, tripStats: null },
     lastControllerP0: null,
+    // Whether the controller answers a P0 read: true for newer ones with an acceleration
+    // per assist level, false for older ones such as the M820, null until a sync has told.
+    controllerHasP0: null,
     lastControllerP1: null,
     lastControllerP2: null,
     lastControllerP1Read: null,
@@ -60,8 +63,6 @@ export const START_PULSE_MAX = 48; // Based on original input constraints
 // --- Chart instances (initialize to null) ---
 export let pasChart = null;
 export let startRampChart = null;
-export let pasChartM820 = null;
-export let startRampChartM820 = null;
 
 // --- Constants for Charting ---
 export const MAX_HUMAN_POWER_X_AXIS = 300;
@@ -97,6 +98,7 @@ export const displayElements = {
     lightValue: document.getElementById('displayLightValue'),
     upButtonValue: document.getElementById('displayUpButtonValue'),
     downButtonValue: document.getElementById('displayDownButtonValue'),
+    tripActiveValue: document.getElementById('displayTripActiveValue'),
     errorTableBody: document.getElementById('displayErrorTableBody'),
     displayShutdownTimeValue: document.getElementById('displayShutdownTimeValue'),
     syncButton: document.getElementById('displaySyncButton'),
@@ -149,20 +151,11 @@ export const gearsElements = {
     assistLevelPlaceholder: document.getElementById('assistLevelPlaceholder'),
     torqueProfilePlaceholder: document.getElementById('torqueProfilePlaceholder'),
     autoCorrectionCheckbox: document.getElementById('autoCorrectionCheckbox'),
-};
-
-export const gearsElementsM820 = {
-    syncButton: document.getElementById('gearsSyncButtonM820'),
-    saveButton: document.getElementById('gearsSaveButtonM820'),
-    controllerStartupAngleValueEl: document.getElementById('controllerStartupAngleValueM820'),
-    controllerStartupAngleInputEl: document.getElementById('controllerStartupAngleInputM820'),
-    globalAccelerationValueEl: document.getElementById('globalAccelerationValueM820'),
-    globalAccelerationInputEl: document.getElementById('globalAccelerationInputM820'),
-    startupAnglePlaceholderEl: document.getElementById('startupAnglePlaceholderM820'),
-    assistLevelTableBody: document.getElementById('assistLevelTableBodyM820'),
-    torqueProfileTableBody: document.getElementById('torqueProfileTableBodyM820'),
-    assistLevelPlaceholder: document.getElementById('assistLevelPlaceholderM820'),
-    torqueProfilePlaceholder: document.getElementById('torqueProfilePlaceholderM820'),
+    modeInfo: document.getElementById('assistModeInfo'),
+    assistLevelsSubtitle: document.getElementById('assistLevelsSubtitle'),
+    globalAccelerationRow: document.getElementById('globalAccelerationRow'),
+    globalAccelerationValueEl: document.getElementById('globalAccelerationValue'),
+    globalAccelerationInputEl: document.getElementById('globalAccelerationInput'),
 };
 
 export const debugElements = {
@@ -304,6 +297,7 @@ export const infoElements = {
     ctrlMfgInput: document.getElementById('infoCtrlMfgInput'),
     ctrlOdoValue: document.getElementById('infoCtrlOdoValue'),
     ctrlRecordOdoValue: document.getElementById('infoCtrlRecordOdoValue'),
+    ctrlDayTripValue: document.getElementById('infoCtrlDayTripValue'),
     ctrlPlaceholder: document.getElementById('infoCtrlPlaceholder'),
     rideStatsReadButton: document.getElementById('infoRideStatsReadButton'),
     rideStatsBody: document.getElementById('infoRideStatsBody'),
@@ -343,7 +337,7 @@ export const TRANSIENT_EVENT_TYPES = new Set([
     'normal_ack', 'error_ack',
     'display_realtime', 'display_errors',
     'controller_realtime_0', 'controller_realtime_1', 'controller_state', 'controller_errors',
-    'controller_odo', 'controller_record_odo',
+    'controller_odo', 'controller_record_odo', 'controller_trip_stats',
     'sensor_realtime',
     'battery_state', 'battery_capacity', 'battery_cells_raw', 'battery_charging_info',
 ]);
@@ -406,10 +400,6 @@ export const pasCurvesPlaceholder = document.getElementById('pasCurvesPlaceholde
 export const pasCurvesContainer = document.getElementById('pasCurvesContainer');
 export const startRampPlaceholder = document.getElementById('startRampPlaceholder');
 export const startRampContainer = document.getElementById('startRampContainer');
-export const pasCurvesPlaceholderM820 = document.getElementById('pasCurvesPlaceholderM820');
-export const pasCurvesContainerM820 = document.getElementById('pasCurvesContainerM820');
-export const startRampPlaceholderM820 = document.getElementById('startRampPlaceholderM820');
-export const startRampContainerM820 = document.getElementById('startRampContainerM820');
 
 // --- Error descriptions ---
 export const errorDescriptions = {
@@ -517,8 +507,8 @@ export const rawParamFieldMappings = {
         byteLength: 64,
         fields: [
             { index: 0, length: 1, name: 'par0_value_offset_0' },
-            ...Array.from({ length: 9 }, (_, i) => ({ index: 1 + i, length: 1, name: `acceleration_levels[${i}].acceleration_level` })),
-            ...Array.from({ length: 9 }, (_, i) => ({ index: 10 + (i * 2), length: 2, name: `assist_ratio_levels[${i}].assist_ratio` })),
+            ...Array.from({ length: 9 }, (_, i) => ({ index: 1 + i, length: 1, name: `Acceleration, level slot ${i + 1}` })),
+            ...Array.from({ length: 9 }, (_, i) => ({ index: 10 + (i * 2), length: 2, name: `Assist ratio, level slot ${i + 1} (LE)` })),
             { index: 28, length: 2, name: 'assist_ratio_upper_limit' },
             { index: 30, length: 32, name: 'unknown_bytes' },
             { index: 63, length: 1, name: 'checksum' },
@@ -558,8 +548,8 @@ export const rawParamFieldMappings = {
             { index: 35, length: 1, name: 'throttle_max_voltage (x10)' },
             { index: 36, length: 1, name: 'speed_limit_enabled' },
             { index: 37, length: 1, name: 'start_current (%)' },
-            ...Array.from({ length: 9 }, (_, i) => ({ index: 40 + i, length: 1, name: `assist_levels[${i}].current_limit` })),
-            ...Array.from({ length: 9 }, (_, i) => ({ index: 49 + i, length: 1, name: `assist_levels[${i}].speed_limit` })),
+            ...Array.from({ length: 9 }, (_, i) => ({ index: 40 + i, length: 1, name: `Current limit, level slot ${i + 1} (%)` })),
+            ...Array.from({ length: 9 }, (_, i) => ({ index: 49 + i, length: 1, name: `Speed limit, level slot ${i + 1} (%)` })),
             { index: 58, length: 1, name: 'displayless_mode (0/1)' },
             { index: 59, length: 1, name: 'lamps_always_on (0/1)' },
             { index: 60, length: 2, name: 'walk_assist_speed (x100 Km/H, LE)' },
@@ -571,15 +561,15 @@ export const rawParamFieldMappings = {
         fields: [
             { index: 0, length: 1, name: 'torque_profiles[0].start_torque_value' },
             { index: 6, length: 1, name: 'torque_profiles[0].max_torque_value' },
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 0 + i, length: 1, name: `TP[${i}].StartTorque` })),
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 6 + i, length: 1, name: `TP[${i}].MaxTorque` })),
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 12 + i, length: 1, name: `TP[${i}].ReturnTorque` })),
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 18 + i, length: 1, name: `TP[${i}].MaxCurrent` })),
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 24 + i, length: 1, name: `TP[${i}].MinCurrent` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 0 + i, length: 1, name: `Torque profile ${i + 1}: start torque` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 6 + i, length: 1, name: `Torque profile ${i + 1}: max torque` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 12 + i, length: 1, name: `Torque profile ${i + 1}: return torque` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 18 + i, length: 1, name: `Torque profile ${i + 1}: max current (%)` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 24 + i, length: 1, name: `Torque profile ${i + 1}: min current (%)` })),
             { index: 30, length: 6, name: 'unknown_bytes' },
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 36 + i, length: 1, name: `TP[${i}].StartPulse` })),
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 42 + i, length: 1, name: `TP[${i}].DecayTime (x5ms)` })),
-            ...Array.from({ length: 6 }, (_, i) => ({ index: 48 + i, length: 1, name: `TP[${i}].StopDelay (x2ms)` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 36 + i, length: 1, name: `Torque profile ${i + 1}: start pulse` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 42 + i, length: 1, name: `Torque profile ${i + 1}: current decay (x5 ms)` })),
+            ...Array.from({ length: 6 }, (_, i) => ({ index: 48 + i, length: 1, name: `Torque profile ${i + 1}: stop delay (x2 ms)` })),
             { index: 54, length: 1, name: 'acceleration_level' },
             { index: 55, length: 1, name: 'motor overheating temperature?' },
             { index: 56, length: 1, name: 'temperature?' },
@@ -611,6 +601,66 @@ export const rawParamFieldMappings = {
             { index: 60, length: 2, name: 'Magnification of the couple (LE)' },
             { index: 62, length: 1, name: 'unknown_byte_62' },
             { index: 63, length: 1, name: 'checksum' },
+        ],
+    },
+    controller_params_600f: {
+        byteLength: 64,
+        fields: [
+            { index: 0, length: 1, name: 'Throttle current limit, level slot 1', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 1, length: 1, name: 'Throttle current limit, level slot 2', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 2, length: 1, name: 'Throttle current limit, level slot 3', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 3, length: 1, name: 'Throttle current limit, level slot 4', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 4, length: 1, name: 'Throttle current limit, level slot 5', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 5, length: 1, name: 'Throttle current limit, level slot 6', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 6, length: 1, name: 'Throttle current limit, level slot 7', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 7, length: 1, name: 'Throttle current limit, level slot 8', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 8, length: 1, name: 'Throttle current limit, level slot 9', unit: '%', notes: 'Current limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C); defaults to the same values as the assist current limits (DPC18RI)' },
+            { index: 9, length: 1, name: 'Throttle speed limit, level slot 1', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 10, length: 1, name: 'Throttle speed limit, level slot 2', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 11, length: 1, name: 'Throttle speed limit, level slot 3', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 12, length: 1, name: 'Throttle speed limit, level slot 4', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 13, length: 1, name: 'Throttle speed limit, level slot 5', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 14, length: 1, name: 'Throttle speed limit, level slot 6', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 15, length: 1, name: 'Throttle speed limit, level slot 7', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 16, length: 1, name: 'Throttle speed limit, level slot 8', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 17, length: 1, name: 'Throttle speed limit, level slot 9', unit: '%', notes: 'Speed limit for pure electric / throttle riding, independent of the assist limits in 6011 (nedkoppetrof, M315 CR R309.C; throttle-related limit on the M510 FC2.0, Steakbroetchen); defaults to the same values as the assist speed limits (DPC18RI)' },
+            { index: 18, length: 2, name: 'unknown_bytes_18_19', notes: '00 00 on a BBS01B (DPC18RI)' },
+            { index: 20, length: 2, name: 'Throttle speed limit (LE)', unit: '0.01 km/h', notes: '3200 = 32.00 km/h, changeable on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); FF FF (no limit?) on a BBS01B (DPC18RI), meaning not established there' },
+            { index: 22, length: 1, name: 'Per-level C, level slot 1', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 23, length: 1, name: 'Per-level C, level slot 2', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 24, length: 1, name: 'Per-level C, level slot 3', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 25, length: 1, name: 'Per-level C, level slot 4', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 26, length: 1, name: 'Per-level C, level slot 5', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 27, length: 1, name: 'Per-level C, level slot 6', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 28, length: 1, name: 'Per-level C, level slot 7', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 29, length: 1, name: 'Per-level C, level slot 8', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 30, length: 1, name: 'Per-level C, level slot 9', notes: 'All 6 on a BBS01B (DPC18RI)' },
+            { index: 31, length: 1, name: 'unknown_byte_31', notes: '01 on a BBS01B (DPC18RI)' },
+            { index: 32, length: 5, name: 'unknown_bytes_32_36 (flags?)', notes: '00 01 00 01 00 on a BBS01B (DPC18RI)' },
+            { index: 37, length: 1, name: 'Lamp voltage', unit: 'V', notes: '0x30 = 48 V on a BBS01B (DPC18RI) and on a 48 V M315 (nedkoppetrof), so not the battery voltage; BESST shows it as the max lamp voltage (Steakbroetchen)' },
+            { index: 38, length: 1, name: 'Lamp current', unit: '0.1 A', notes: '0x0A = 1.0 A on a BBS01B (DPC18RI); BESST shows voltage x current as lamp power, 48 W (Steakbroetchen)' },
+            { index: 39, length: 1, name: 'unknown_byte_39', notes: '01 on a BBS01B (DPC18RI)' },
+            { index: 40, length: 1, name: 'Per-level D, level slot 1', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 41, length: 1, name: 'Per-level D, level slot 2', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 42, length: 1, name: 'Per-level D, level slot 3', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 43, length: 1, name: 'Per-level D, level slot 4', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 44, length: 1, name: 'Per-level D, level slot 5', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 45, length: 1, name: 'Per-level D, level slot 6', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 46, length: 1, name: 'Per-level D, level slot 7', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 47, length: 1, name: 'Per-level D, level slot 8', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 48, length: 1, name: 'Per-level D, level slot 9', notes: 'All 100 on a BBS01B (DPC18RI)' },
+            { index: 49, length: 3, name: 'unknown_bytes_49_51', notes: 'Zeros on a BBS01B (DPC18RI)' },
+            { index: 52, length: 1, name: 'Boost response, level slot 1', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 53, length: 1, name: 'Boost response, level slot 2', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 54, length: 1, name: 'Boost response, level slot 3', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 55, length: 1, name: 'Boost response, level slot 4', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 56, length: 1, name: 'Boost response, level slot 5', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 57, length: 1, name: 'Boost response, level slot 6', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 58, length: 1, name: 'Boost response, level slot 7', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 59, length: 1, name: 'Boost response, level slot 8', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 60, length: 1, name: 'Boost response, level slot 9', unit: '0-8', notes: '"Boost Response Time" in Bafang Go on the M510 FC2.0 (Steakbroetchen, who counts bytes from 1); all 0 on a BBS01B (DPC18RI)' },
+            { index: 61, length: 2, name: 'unknown_bytes_61_62', notes: 'Zeros on a BBS01B (DPC18RI)' },
+            { index: 63, length: 1, name: 'checksum?', notes: 'Bafang Go writes the sum of the bytes before it (mod 256); 00 on a BBS01B (DPC18RI) and in the FC2.0 firmware default, so not enforced' },
         ],
     },
     controller_params_6018: {
